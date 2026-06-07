@@ -1,0 +1,245 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Answer Helper - Test Page</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; color: #1f2937; }
+  .que { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; padding: 16px; max-width: 800px; }
+  .info { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  .info .no { font-size: 15px; font-weight: 700; margin: 0; }
+  .state { color: #6366f1; font-weight: 600; }
+  .grade { color: #6b7280; }
+  .qtext { font-size: 15px; margin-bottom: 12px; line-height: 1.5; }
+  .qtext p { margin: 0; }
+  legend.prompt { font-size: 13px; color: #6b7280; margin-bottom: 8px; font-weight: 600; }
+  .ablock { border: none; padding: 0; margin: 0; }
+  .answer { margin: 0; }
+  .r0, .r1 { padding: 6px 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .r0 { background: #f9fafb; }
+  .r1 { background: #f3f4f6; }
+  .r0:hover, .r1:hover { background: #eef2ff; }
+  input[type="radio"] { margin: 0; }
+  .answernumber { font-weight: 600; color: #4b5563; min-width: 20px; }
+  .flex-fill { flex: 1; }
+  .flex-fill p { margin: 0; font-size: 14px; }
+  .d-flex { display: flex; align-items: center; gap: 6px; }
+  .qtype_multichoice_clearchoice { margin-top: 8px; font-size: 13px; }
+  .qtype_multichoice_clearchoice a { color: #6366f1; cursor: pointer; text-decoration: none; }
+  .qtype_multichoice_clearchoice a:hover { text-decoration: underline; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .submitbtns { max-width: 800px; }
+  .mod_quiz-next-nav { padding: 10px 24px; background: #6366f1; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  .mod_quiz-next-nav:hover { background: #4f46e5; }
+  .formulation { }
+  .page-header { max-width: 800px; margin-bottom: 16px; }
+  .page-header h2 { margin: 0; font-size: 20px; }
+  .page-header .subtitle { color: #6b7280; font-size: 13px; margin-top: 4px; }
+  .quiznav { position: fixed; right: 20px; top: 20px; width: 200px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; font-size: 12px; }
+  .quiznav h3 { margin: 0 0 8px; font-size: 14px; }
+  .qn_buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+  .qnbutton { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #fff; color: #374151; }
+  .qnbutton.thispage { border-color: #6366f1; background: #eef2ff; color: #6366f1; }
+  .qnbutton.answersaved { border-color: #22c55e; background: #f0fdf4; color: #22c55e; }
+  .endtestlink { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: #6366f1; text-decoration: none; }
+  #quiz-timer { position: fixed; top: 20px; left: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+  .correct-answer { background: #22c55e !important; color: white !important; }
+</style>
+</head>
+<body>
+
+<div id="quiz-timer">
+  <div><strong>Time left</strong></div>
+  <div id="quiz-time-left">0:29:58</div>
+</div>
+
+<div class="quiznav">
+  <h3>Quiz navigation</h3>
+  <div class="qn_buttons">
+    <span class="qnbutton answersaved">1</span>
+    <span class="qnbutton answersaved">2</span>
+    <span class="qnbutton answersaved">3</span>
+    <span class="qnbutton answersaved thispage">4</span>
+  </div>
+  <a class="endtestlink" href="#">Finish attempt ...</a>
+</div>
+
+<div class="page-header">
+  <h2>📝 Mock Moodle Quiz</h2>
+  <div class="subtitle">Test page — questions with known correct answers</div>
+</div>
+
+<form id="responseform">
+<!-- ===== QUESTION 1 ===== -->
+<div id="question-1" class="que multichoice deferredfeedback answersaved">
+  <div class="info">
+    <h3 class="no">Question <span class="qno">1</span></h3>
+    <div class="state">Not yet answered</div>
+    <div class="grade">Marked out of 1.00</div>
+  </div>
+  <div class="content">
+    <div class="formulation clearfix">
+      <div class="qtext">
+        <p>What is the capital of France?</p>
+      </div>
+      <fieldset class="ablock no-overflow visual-scroll-x">
+        <legend class="prompt h6 font-weight-normal">
+          <span class="sr-only">Question 1</span> Select one:
+        </legend>
+        <div class="answer">
+          <div class="r0">
+            <input type="radio" name="q1_answer" value="0" id="q1_answer0" aria-labelledby="q1_answer0_label">
+            <div class="d-flex w-auto" id="q1_answer0_label" data-region="answer-label">
+              <span class="answernumber">a. </span>
+              <div class="flex-fill ms-1"><p>London</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q1_answer" value="1" id="q1_answer1" aria-labelledby="q1_answer1_label">
+            <div class="d-flex w-auto" id="q1_answer1_label" data-region="answer-label">
+              <span class="answernumber">b. </span>
+              <div class="flex-fill ms-1"><p>Paris</p></div>
+            </div>
+          </div>
+          <div class="r0">
+            <input type="radio" name="q1_answer" value="2" id="q1_answer2" aria-labelledby="q1_answer2_label">
+            <div class="d-flex w-auto" id="q1_answer2_label" data-region="answer-label">
+              <span class="answernumber">c. </span>
+              <div class="flex-fill ms-1"><p>Berlin</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q1_answer" value="3" id="q1_answer3" aria-labelledby="q1_answer3_label">
+            <div class="d-flex w-auto" id="q1_answer3_label" data-region="answer-label">
+              <span class="answernumber">d. </span>
+              <div class="flex-fill ms-1"><p>Madrid</p></div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+</div>
+
+<!-- ===== QUESTION 2 ===== -->
+<div id="question-2" class="que multichoice deferredfeedback answersaved">
+  <div class="info">
+    <h3 class="no">Question <span class="qno">2</span></h3>
+    <div class="state">Not yet answered</div>
+    <div class="grade">Marked out of 1.00</div>
+  </div>
+  <div class="content">
+    <div class="formulation clearfix">
+      <div class="qtext">
+        <p>Which planet is known as the Red Planet?</p>
+      </div>
+      <fieldset class="ablock no-overflow visual-scroll-x">
+        <legend class="prompt h6 font-weight-normal">
+          <span class="sr-only">Question 2</span> Select one:
+        </legend>
+        <div class="answer">
+          <div class="r0">
+            <input type="radio" name="q2_answer" value="0" id="q2_answer0" aria-labelledby="q2_answer0_label">
+            <div class="d-flex w-auto" id="q2_answer0_label" data-region="answer-label">
+              <span class="answernumber">a. </span>
+              <div class="flex-fill ms-1"><p>Venus</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q2_answer" value="1" id="q2_answer1" aria-labelledby="q2_answer1_label">
+            <div class="d-flex w-auto" id="q2_answer1_label" data-region="answer-label">
+              <span class="answernumber">b. </span>
+              <div class="flex-fill ms-1"><p>Jupiter</p></div>
+            </div>
+          </div>
+          <div class="r0">
+            <input type="radio" name="q2_answer" value="2" id="q2_answer2" aria-labelledby="q2_answer2_label">
+            <div class="d-flex w-auto" id="q2_answer2_label" data-region="answer-label">
+              <span class="answernumber">c. </span>
+              <div class="flex-fill ms-1"><p>Mars</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q2_answer" value="3" id="q2_answer3" aria-labelledby="q2_answer3_label">
+            <div class="d-flex w-auto" id="q2_answer3_label" data-region="answer-label">
+              <span class="answernumber">d. </span>
+              <div class="flex-fill ms-1"><p>Saturn</p></div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+</div>
+
+<!-- ===== QUESTION 3 ===== -->
+<div id="question-3" class="que multichoice deferredfeedback answersaved">
+  <div class="info">
+    <h3 class="no">Question <span class="qno">3</span></h3>
+    <div class="state">Not yet answered</div>
+    <div class="grade">Marked out of 1.00</div>
+  </div>
+  <div class="content">
+    <div class="formulation clearfix">
+      <div class="qtext">
+        <p>What is the chemical symbol for water?</p>
+      </div>
+      <fieldset class="ablock no-overflow visual-scroll-x">
+        <legend class="prompt h6 font-weight-normal">
+          <span class="sr-only">Question 3</span> Select one:
+        </legend>
+        <div class="answer">
+          <div class="r0">
+            <input type="radio" name="q3_answer" value="0" id="q3_answer0" aria-labelledby="q3_answer0_label">
+            <div class="d-flex w-auto" id="q3_answer0_label" data-region="answer-label">
+              <span class="answernumber">a. </span>
+              <div class="flex-fill ms-1"><p>H₂O</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q3_answer" value="1" id="q3_answer1" aria-labelledby="q3_answer1_label">
+            <div class="d-flex w-auto" id="q3_answer1_label" data-region="answer-label">
+              <span class="answernumber">b. </span>
+              <div class="flex-fill ms-1"><p>CO₂</p></div>
+            </div>
+          </div>
+          <div class="r0">
+            <input type="radio" name="q3_answer" value="2" id="q3_answer2" aria-labelledby="q3_answer2_label">
+            <div class="d-flex w-auto" id="q3_answer2_label" data-region="answer-label">
+              <span class="answernumber">c. </span>
+              <div class="flex-fill ms-1"><p>NaCl</p></div>
+            </div>
+          </div>
+          <div class="r1">
+            <input type="radio" name="q3_answer" value="3" id="q3_answer3" aria-labelledby="q3_answer3_label">
+            <div class="d-flex w-auto" id="q3_answer3_label" data-region="answer-label">
+              <span class="answernumber">d. </span>
+              <div class="flex-fill ms-1"><p>O₂</p></div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+</div>
+
+<div class="submitbtns">
+  <input type="submit" name="next" value="Finish attempt ..." class="mod_quiz-next-nav" id="mod_quiz-next-nav">
+</div>
+</form>
+
+<script>
+// Known correct answers: Q1=b(Paris), Q2=c(Mars), Q3=a(H2O)
+// Show correct answer on click
+document.querySelectorAll(".r0, .r1").forEach(el => {
+  el.addEventListener("click", function() {
+    const radio = this.querySelector('input[type="radio"]');
+    if (radio) radio.checked = true;
+  });
+});
+</script>
+
+</body>
+</html>
+

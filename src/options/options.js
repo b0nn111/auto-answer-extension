@@ -35,10 +35,11 @@
     status.textContent = "检测中...";
     status.className = "status";
     
-    // Try Ollama protocol first
-    let running = await Ollama.checkRunning(url).catch(() => false);
+    // Try Ollama protocol first (strip /v1 if present)
+    let ollamaUrl = url.replace(/\/v1\/?$/, "").replace(/\/v1\/?$/, "");
+    let running = await Ollama.checkRunning(ollamaUrl).catch(() => false);
     if (running) {
-      const models = await Ollama.listModels(url).catch(() => []);
+      const models = await Ollama.listModels(ollamaUrl).catch(() => []);
       if (models.length > 0) {
         $("ollamaModel").value = models[0];
         status.textContent = "✅ Ollama 已连接，发现 " + models.length + " 个模型";
@@ -149,6 +150,7 @@
     $("toggleKey").addEventListener("click", toggleKeyVisibility);
   });
 })();
+
 
 
 
