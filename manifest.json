@@ -1,0 +1,37 @@
+﻿{
+  "manifest_version": 3,
+  "name": "自动答题助手",
+  "version": "1.0.0",
+  "description": "自动检测网页题目，优先题库命中，未命中则调用 AI 辅助",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "https://api.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": [
+      "src/lib/types.js",
+      "src/lib/matcher.js",
+      "src/lib/db.js",
+      "src/content/annotator.js",
+      "src/content/panel.js",
+      "src/content/content-script.js"
+    ],
+    "run_at": "document_idle"
+  }],
+  "options_page": "src/options/options.html",
+  "action": {
+    "default_title": "自动答题助手",
+    "default_popup": "src/popup/popup.html"
+  },
+  "icons": {
+    "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png"
+  }
+}
+
+

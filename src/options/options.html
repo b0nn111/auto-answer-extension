@@ -1,0 +1,93 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>自动答题助手 - 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>⚙️ 自动答题助手</h1>
+    <p class="subtitle">配置推理引擎和数据管理</p>
+
+    <section>
+      <h2>🖥️ 本地 AI 设置</h2>
+      <div class="field">
+        <label for="ollamaUrl">地址</label>
+        <input type="url" id="ollamaUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
+      </div>
+      <div class="field">
+        <label for="ollamaModel">模型</label>
+        <input type="text" id="ollamaModel" value="qwen2.5:7b" placeholder="qwen2.5:7b">
+        <button id="refreshModels" class="btn-sm">🔄 刷新列表</button>
+      </div>
+      <div id="ollamaStatus" class="status"></div>
+    </section>
+
+    <section>
+      <h2>🤖 AI API 设置（可选）</h2>
+      <p class="hint" style="margin-bottom:10px">支持任何 OpenAI 兼容的 API：DeepSeek、通义千问、SiliconFlow、Kimi 等</p>
+      <div class="field">
+        <label for="aiApiUrl">API 地址</label>
+        <input type="url" id="aiApiUrl" value="https://api.deepseek.com/v1" placeholder="https://api.deepseek.com/v1">
+      </div>
+      <div class="field">
+        <label for="aiApiModel">模型名称</label>
+        <input type="text" id="aiApiModel" value="deepseek-chat" placeholder="deepseek-chat">
+      </div>
+      <div class="field">
+        <label for="aiApiKey">API Key</label>
+        <div class="key-row">
+          <input type="password" id="aiApiKey" placeholder="sk-..." autocomplete="off">
+          <button id="toggleKey" class="btn-sm">👁️ 显示</button>
+        </div>
+        <p class="hint">填入 API Key 后保存即可使用。密钥仅保存在浏览器本地。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>📚 题库管理</h2>
+      <div id="stats" class="stats">
+        <div class="stat-item">
+          <span class="stat-value" id="statCached">-</span>
+          <span class="stat-label">已缓存题目</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="statMatched">-</span>
+          <span class="stat-label">题库命中</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="statRate">-</span>
+          <span class="stat-label">命中率</span>
+        </div>
+      </div>
+      <button id="clearCache" class="btn-danger">🗑️ 清空题库</button>
+    </section>
+
+    <section>
+      <h2>📥 导入题库</h2>
+      <p class="hint" style="margin-bottom:10px">上传 JSON 文件批量导入题目。格式：<code>[{"question":"...","answer":"...","options":["..."]}]</code></p>
+      <div class="field">
+        <input type="file" id="importFile" accept=".json" style="font-size:13px">
+      </div>
+      <button id="importBtn" class="btn-sm">📤 导入</button>
+      <div id="importStatus" class="status"></div>
+    </section>
+
+    <div class="actions">
+      <button id="saveBtn" class="btn-primary">💾 保存设置</button>
+      <span id="saveMsg" class="save-msg"></span>
+    </div>
+  </div>
+
+  <script src="../lib/types.js"></script>
+  <script src="../lib/matcher.js"></script>
+  <script src="../lib/db.js"></script>
+  <script src="../lib/ollama.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
+
+
+

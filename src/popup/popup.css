@@ -1,0 +1,83 @@
+﻿* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 280px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: #1f2937;
+  background: #f9fafb;
+}
+
+.popup { padding: 12px; }
+
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.header h1 { font-size: 15px; font-weight: 700; }
+.version {
+  font-size: 10px; color: #9ca3af; background: #f3f4f6;
+  padding: 1px 6px; border-radius: 4px;
+}
+
+/* ── Master toggle ── */
+.toggle-row {
+  display: flex; align-items: center; gap: 10px;
+  background: white; border: 1px solid #e5e7eb;
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.toggle-label { font-size: 13px; font-weight: 600; flex: 1; }
+.toggle-status { font-size: 11px; color: #9ca3af; min-width: 24px; }
+.toggle-status.on { color: #22c55e; }
+.toggle-status.off { color: #9ca3af; }
+
+.toggle-switch {
+  position: relative; display: inline-block; width: 36px; height: 20px;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #d1d5db; border-radius: 10px; transition: 0.2s;
+}
+.toggle-slider::before {
+  content: ""; position: absolute; height: 16px; width: 16px;
+  left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #22c55e; }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* ── Sections ── */
+.section {
+  background: white; border: 1px solid #e5e7eb;
+  border-radius: 8px; padding: 10px; margin-bottom: 8px;
+}
+.section-title {
+  font-size: 11px; font-weight: 600; color: #6b7280;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.actions-section { padding: 8px 10px; }
+
+.diag-item {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+}
+.diag-icon { font-size: 14px; width: 20px; text-align: center; }
+.diag-label { flex: 1; font-size: 12px; color: #374151; }
+.diag-status { font-size: 11px; color: #6b7280; text-align: right; }
+.diag-item.ok .diag-status { color: #22c55e; }
+.diag-item.err .diag-status { color: #ef4444; }
+.diag-item.warn .diag-status { color: #f59e0b; }
+.diag-item.loading .diag-status { color: #6366f1; }
+
+.btn-primary, .btn-secondary {
+  display: block; width: 100%; padding: 8px; font-size: 13px;
+  border: none; border-radius: 6px; cursor: pointer; text-align: center; margin-bottom: 6px;
+}
+.btn-primary { color: white; background: #6366f1; }
+.btn-primary:hover { background: #4f46e5; }
+.btn-secondary { color: #374151; background: #f3f4f6; border: 1px solid #e5e7eb; }
+.btn-secondary:hover { background: #e5e7eb; }
+
+.footer {
+  font-size: 10px; color: #9ca3af; text-align: center; padding-top: 4px;
+}
+
