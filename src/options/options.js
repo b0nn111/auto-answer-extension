@@ -148,8 +148,48 @@
     $("refreshModels").addEventListener("click", refreshModels);
     $("clearCache").addEventListener("click", clearCache);
     $("toggleKey").addEventListener("click", toggleKeyVisibility);
+    $("syncUploadBtn").addEventListener("click", syncUpload);
+    $("syncDownloadBtn").addEventListener("click", syncDownload);
   });
+
+  async function syncUpload() {
+    const status = $("syncStatus");
+    status.textContent = "上传中...";
+    status.className = "status";
+    const result = await self.AutoAnswer.CloudSync.upload(
+      $("syncToken").value.trim(),
+      $("syncRepo").value.trim(),
+      $("syncPath").value.trim()
+    );
+    if (result.ok) {
+      status.textContent = "✅ 上传成功，共 " + result.count + " 道题";
+      status.className = "status ok";
+    } else {
+      status.textContent = "❌ " + result.error;
+      status.className = "status err";
+    }
+  }
+
+  async function syncDownload() {
+    const status = $("syncStatus");
+    status.textContent = "下载中...";
+    status.className = "status";
+    const result = await self.AutoAnswer.CloudSync.download(
+      $("syncToken").value.trim(),
+      $("syncRepo").value.trim(),
+      $("syncPath").value.trim()
+    );
+    if (result.ok) {
+      status.textContent = "✅ 下载完成：新增 " + result.added + " 题，跳过 " + result.skipped + " 题";
+      status.className = "status ok";
+      loadStats();
+    } else {
+      status.textContent = "❌ " + result.error;
+      status.className = "status err";
+    }
+  }
 })();
+
 
 
 

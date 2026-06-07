@@ -75,6 +75,28 @@
       <div id="importStatus" class="status"></div>
     </section>
 
+    <section>
+      <h2>☁️ 云端同步（免费）</h2>
+      <p class="hint" style="margin-bottom:10px">通过 GitHub 同步题库到多台设备。需创建 Personal Access Token（Settings → Tokens → 勾 repo）</p>
+      <div class="field">
+        <label for="syncToken">GitHub Token</label>
+        <input type="password" id="syncToken" placeholder="ghp_..." autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="syncRepo">仓库名</label>
+        <input type="text" id="syncRepo" value="b0nn111/auto-answer-extension" placeholder="用户名/仓库名">
+      </div>
+      <div class="field">
+        <label for="syncPath">文件路径</label>
+        <input type="text" id="syncPath" value="question-bank.json" placeholder="question-bank.json">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="syncUploadBtn" class="btn-sm">☁️ 上传题库</button>
+        <button id="syncDownloadBtn" class="btn-sm">☁️ 下载题库</button>
+      </div>
+      <div id="syncStatus" class="status"></div>
+    </section>
+
     <div class="actions">
       <button id="saveBtn" class="btn-primary">💾 保存设置</button>
       <span id="saveMsg" class="save-msg"></span>
@@ -86,9 +108,16 @@
   <script src="../lib/db.js"></script>
   <script src="../lib/ollama.js"></script>
   <script src="../lib/deepseek.js"></script>
+  <script src="../lib/cloud-sync.js"></script>
+  <script src="../lib/cloud-sync.js"></script>
+  <script src="../lib/deepseek.js"></script>
+  <script src="../lib/cloud-sync.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
+
+
+
 
 
 
