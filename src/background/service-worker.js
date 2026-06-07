@@ -111,15 +111,14 @@ if (settings.ollamaUrl) {
         DB.addQuestion(q.questionText, aiResult.answer, q.options).catch(() => {});
         return { id: q.id, type: q.type, answer: aiResult.answer, source: Types.ANSWER_SOURCE.AI_API, confidence: aiResult.confidence };
       }
-      // Auto sync removed - triggers elsewhere
-      } else {
+        else {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);
       }
     }
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
   }
-{
 })();
+
 
 
 
