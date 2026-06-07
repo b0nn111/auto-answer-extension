@@ -14,9 +14,11 @@
     if (stored.syncToken) $("syncToken").value = stored.syncToken;
     if (stored.syncRepo) $("syncRepo").value = stored.syncRepo;
     if (stored.syncPath) $("syncPath").value = stored.syncPath;
+    if (stored.autoSync !== undefined) $("autoSync").checked = stored.autoSync;
       if (stored.syncToken) $("syncToken").value = stored.syncToken;
       if (stored.syncRepo) $("syncRepo").value = stored.syncRepo;
       if (stored.syncPath) $("syncPath").value = stored.syncPath;
+    if (stored.autoSync !== undefined) $("autoSync").checked = stored.autoSync;
   }
 
   async function saveSettings() {
@@ -29,9 +31,11 @@
       syncToken: $("syncToken").value.trim(),
       syncRepo: $("syncRepo").value.trim(),
       syncPath: $("syncPath").value.trim(),
+      autoSync: $("autoSync").checked,
       syncToken: $("syncToken").value.trim(),
       syncRepo: $("syncRepo").value.trim(),
       syncPath: $("syncPath").value.trim(),
+      autoSync: $("autoSync").checked,
     };
     await chrome.storage.sync.set(settings);
     chrome.runtime.sendMessage({ type: Types.MSG_TYPE.SETTINGS_UPDATED, settings });
@@ -201,6 +205,7 @@
     }
   }
 })();
+
 
 
 

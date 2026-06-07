@@ -4,7 +4,9 @@
   "../lib/db.js",
   
   "../lib/ollama.js",
-  "../lib/deepseek.js"
+  "../lib/deepseek.js",
+  "../lib/cloud-sync.js",
+  "../lib/cloud-sync.js"
 );
 
 (function () {
@@ -114,13 +116,18 @@ if (settings.ollamaUrl) {
       if (aiResult.success) {
         DB.addQuestion(q.questionText, aiResult.answer, q.options).catch(() => {});
         return { id: q.id, type: q.type, answer: aiResult.answer, source: Types.ANSWER_SOURCE.AI_API, confidence: aiResult.confidence };
-      } else {
+      }
+    // Auto sync to cloud if configured
+    self.AutoAnswer.CloudSync.autoUpload().catch(() => {}); else {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);
       }
     }
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
   }
 })();
+
+
+
 
 
 
