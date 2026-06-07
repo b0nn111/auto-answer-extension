@@ -57,8 +57,6 @@ function updateToggleUI(enabled) {
   setStatus("diag-localai", "loading", "检测中...");
   setStatus("diag-db", "loading", "检测中...");
   setStatus("diag-ext", "loading", "检测中...");
-    setStatus("diag-sync", "loading", "检测中...");
-  setStatus("diag-sync", "loading", "检测中...");
 
   try {
     const result = await chrome.runtime.sendMessage({ type: "RUN_DIAGNOSTIC" });
@@ -91,23 +89,11 @@ function updateToggleUI(enabled) {
       setStatus("diag-db", "err", "不可用");
     }
     setStatus("diag-ext", "ok", "正常运行");
-      if (result.cloudSync?.configured) {
-        setStatus("diag-sync", "ok", "已配置");
-      } else {
-        setStatus("diag-sync", "warn", "未配置");
-      }
-      if (result.cloudSync?.configured) {
-        setStatus("diag-sync", "ok", "已配置");
-      } else {
-        setStatus("diag-sync", "warn", "未配置");
-      }
   } catch (e) {
     setStatus("diag-aiapi", "err", "通信失败");
     setStatus("diag-localai", "err", "通信失败");
     setStatus("diag-db", "err", "通信失败");
     setStatus("diag-ext", "err", "Service Worker 未响应");
-      setStatus("diag-sync", "err", "通信失败");
-      setStatus("diag-sync", "err", "通信失败");
   }
 }
 
@@ -121,6 +107,7 @@ function setStatus(id, cls, text) {
   const iconEl = el.querySelector(".diag-icon");
   if (iconEl && iconMap[cls]) iconEl.textContent = iconMap[cls];
 }
+
 
 
 
