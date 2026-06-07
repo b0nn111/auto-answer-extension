@@ -165,7 +165,23 @@
     $("clearCache").addEventListener("click", clearCache);
     $("toggleKey").addEventListener("click", toggleKeyVisibility);
     $("syncUploadBtn").addEventListener("click", syncUpload);
-    $("syncDownloadBtn").addEventListener("click", syncDownload);
+      $("syncDownloadBtn").addEventListener("click", syncDownload);
+      $("syncUploadSettingsBtn").addEventListener("click", syncUploadSettings);
+      $("syncDownloadSettingsBtn").addEventListener("click", syncDownloadSettings);
+      // Auto-load settings when token is entered
+      $("syncToken").addEventListener("change", async () => {
+        if ($("syncToken").value.trim()) {
+          const result = await self.AutoAnswer.CloudSync.downloadSettings(
+            $("syncToken").value.trim(), $("syncRepo").value.trim()
+          ).catch(() => ({}));
+          if (result.ok) {
+            $("syncStatus").textContent = "✅ 设置已从云端加载，请保存";
+            $("syncStatus").className = "status ok";
+            // Reload page to apply settings
+            setTimeout(() => location.reload(), 2000);
+          }
+        }
+      });
   });
 
   async function syncUpload() {
@@ -186,6 +202,26 @@
     }
   }
 
+  async function syncUploadSettings() {
+    const status = $("syncStatus");
+    status.textContent = "上传设置中...";
+    status.className = "status";
+    // Save current settings first
+    saveSettings();
+    // Wait for save to complete
+    await new Promise(r => setTimeout(r, 500));
+    const result = await self.AutoAnswer.CloudSync.uploadSettings(
+      $("syncToken").value.trim(), $("syncRepo").value.trim()
+    );
+    if (result.ok) {
+      status.textContent = "✅ 设置已上传到云端";
+      status.className = "status ok";
+    } else {
+      status.textContent = "❌ " + result.error;
+      status.className = "status err";
+    }
+  }
+
   async function syncDownload() {
     const status = $("syncStatus");
     status.textContent = "下载中...";
@@ -195,8 +231,27 @@
       $("syncRepo").value.trim(),
       $("syncPath").value.trim()
     );
+    if (result.ok) { loadStats(); return; } }
+
+  async function syncDownloadSettings() {
+    const status = $("syncStatus");
+    status.textContent = "下载设置中...";
+    status.className = "status";
+    const result = await self.AutoAnswer.CloudSync.downloadSettings(
+      $("syncToken").value.trim(), $("syncRepo").value.trim()
+    );
     if (result.ok) {
-      status.textContent = "✅ 下载完成：新增 " + result.added + " 题，跳过 " + result.skipped + " 题";
+      status.textContent = "✅ 设置已下载，请保存";
+      status.className = "status ok";
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      status.textContent = "❌ " + result.error;
+      status.className = "status err";
+    }
+  }
+
+  if (result.ok) {
+    status.textContent = "✅ 下载完成：新增 " + result.added + " 题，跳过 " + result.skipped + " 题";
       status.className = "status ok";
       loadStats();
     } else {
@@ -205,6 +260,7 @@
     }
   }
 })();
+
 
 
 

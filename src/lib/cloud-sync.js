@@ -1,4 +1,13 @@
-﻿(function () {
+﻿// Get current extension settings for cloud sync
+  function _getSettings() {
+    return {
+      aiApiUrl: "", aiApiKey: "", aiApiModel: "",
+      ollamaUrl: "http://localhost:11434", ollamaModel: "qwen2.5:7b",
+      autoSync: false, syncToken: "", syncRepo: "", syncPath: "question-bank.json",
+    };
+  }
+
+  (function () {
   "use strict";
   const root = typeof self !== "undefined" ? self : window;
   root.AutoAnswer = root.AutoAnswer || {};
@@ -91,3 +100,4 @@
     },
   };
 })();
+
