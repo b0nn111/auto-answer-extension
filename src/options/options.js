@@ -5,12 +5,18 @@
   const $ = (id) => document.getElementById(id);
 
   async function loadSettings() {
-    const stored = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel"]);
+    const stored = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "syncToken", "syncRepo", "syncPath"]);
     if (stored.ollamaUrl) $("ollamaUrl").value = stored.ollamaUrl;
     if (stored.ollamaModel) $("ollamaModel").value = stored.ollamaModel;
     if (stored.aiApiUrl) $("aiApiUrl").value = stored.aiApiUrl;
     if (stored.aiApiModel) $("aiApiModel").value = stored.aiApiModel;
     if (stored.aiApiKey) $("aiApiKey").value = stored.aiApiKey;
+    if (stored.syncToken) $("syncToken").value = stored.syncToken;
+    if (stored.syncRepo) $("syncRepo").value = stored.syncRepo;
+    if (stored.syncPath) $("syncPath").value = stored.syncPath;
+      if (stored.syncToken) $("syncToken").value = stored.syncToken;
+      if (stored.syncRepo) $("syncRepo").value = stored.syncRepo;
+      if (stored.syncPath) $("syncPath").value = stored.syncPath;
   }
 
   async function saveSettings() {
@@ -20,6 +26,12 @@
       aiApiUrl: $("aiApiUrl").value.trim() || Types.DEFAULT_AI_API_URL,
       aiApiModel: $("aiApiModel").value.trim() || Types.DEFAULT_AI_MODEL,
       aiApiKey: $("aiApiKey").value.trim(),
+      syncToken: $("syncToken").value.trim(),
+      syncRepo: $("syncRepo").value.trim(),
+      syncPath: $("syncPath").value.trim(),
+      syncToken: $("syncToken").value.trim(),
+      syncRepo: $("syncRepo").value.trim(),
+      syncPath: $("syncPath").value.trim(),
     };
     await chrome.storage.sync.set(settings);
     chrome.runtime.sendMessage({ type: Types.MSG_TYPE.SETTINGS_UPDATED, settings });
@@ -189,6 +201,8 @@
     }
   }
 })();
+
+
 
 
 

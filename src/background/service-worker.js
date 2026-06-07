@@ -15,6 +15,7 @@
     ollamaUrl: Types.DEFAULT_OLLAMA_URL,
     ollamaModel: Types.DEFAULT_OLLAMA_MODEL,
     aiApiUrl: Types.DEFAULT_AI_API_URL, aiApiKey: "", aiApiModel: Types.DEFAULT_AI_MODEL,
+    syncToken: "", syncRepo: "b0nn111/auto-answer-extension", syncPath: "question-bank.json",
   };
 
   (async function loadSettings() {
@@ -27,6 +28,9 @@
       if (s.aiApiModel) settings.aiApiModel = s.aiApiModel;
       // Migrate old deepseekKey setting
       if (!settings.aiApiKey && s.deepseekKey) settings.aiApiKey = s.deepseekKey;
+      if (s.syncToken !== undefined) settings.syncToken = s.syncToken;
+      if (s.syncRepo) settings.syncRepo = s.syncRepo;
+      if (s.syncPath) settings.syncPath = s.syncPath;
     } catch (_) {}
   })();
 
@@ -68,10 +72,11 @@
         aiApi: { configured: !!settings.aiApiKey, connected: aiTest.ok, error: aiTest.error },
         ollama: { running: models !== null, models: models ? models.length : 0 },
         database: { available: stats !== null, totalCached: stats ? stats.totalCached : 0, totalMatches: stats ? stats.totalMatches : 0 },
+        cloudSync: { configured: !!settings.syncToken, repo: settings.syncRepo },
       });
     } catch (err) {
       const aiErr = settings.aiApiKey ? "自检异常" : "未配置";
-      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 } });
+      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 }, cloudSync: { configured: false, repo: "" } });
     }
   }
 
@@ -116,6 +121,7 @@ if (settings.ollamaUrl) {
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
   }
 })();
+
 
 
 
