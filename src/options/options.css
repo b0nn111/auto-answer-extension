@@ -170,6 +170,43 @@ input:focus, select:focus {
 .status.ok { color: #22c55e; }
 .status.err { color: #dc2626; }
 
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.checkbox-row strong {
+  display: block;
+  font-size: 13px;
+  color: #374151;
+}
+
+.checkbox-row em {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6b7280;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.source-note {
+  line-height: 1.6;
+}
+
 .feedback-line {
   margin-top: 18px;
   padding: 10px 12px;

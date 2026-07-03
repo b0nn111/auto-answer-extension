@@ -1,96 +1,93 @@
-﻿# 🤖 自动答题助手 (Auto Answer Helper)
+# 自动答题助手 (Auto Answer Helper)
 
-> **Beta 版本** | 已在 XJTLU Moodle 答题页面测试通过
+浏览器扩展（Chrome + Edge），用于自动检测网页题目，并按本地优先的方式辅助给出答案。当前已在 XJTLU Moodle 答题页面测试通过。
 
-浏览器扩展（Chrome + Edge），自动检测网页上的题目，优先从本地题库命中答案，未命中则依次尝试本地 AI 或云端 AI API。
-
-## 架构
+## 工作链路
 
 ```
-网页 → Content Script (检测题目)
-         → 本地题库 (IndexedDB) 命中?  → 直接显示 ✅
-         → Ollama / LM Studio 本地推理
-         → AI API (DeepSeek / 通义千问 / 自定义)
-         → 存入题库，下次秒出
+网页题目
+  → 本地题库（IndexedDB）
+  → 免费搜题接口（可选，默认关闭）
+  → 本地 AI（Ollama / LM Studio / OpenAI 兼容本地服务）
+  → AI API（用户自配 OpenAI 兼容接口）
+  → 缓存到本地题库
 ```
+
+## 数据来源
+
+扩展会在设置页公开展示并允许用户控制数据来源：
+
+| 来源 | 默认状态 | 数据位置 | 说明 |
+|------|----------|----------|------|
+| 本地题库 | 开启 | 浏览器 IndexedDB | 题目和答案保存在本机浏览器中 |
+| 免费搜题接口 | 关闭 | 第三方公开接口 | 开启后会把题目文本发送到全能搜题公开接口查询 |
+| 本地 AI | 按配置启用 | 本机或用户配置地址 | 用于本地模型推理，如 Ollama / LM Studio |
+| AI API | 按配置启用 | 用户填写的 API 服务 | 仅在用户填写 API Key 后调用 |
+
+免费搜题接口当前默认地址为：
+
+`https://study.jszkk.com/api/open/seek`
+
+公开题库来源由第三方提供，答案可能不完整或不准确。请把结果作为辅助参考。
 
 ## 安装
 
-### 1. 加载扩展
+### Chrome
 
-**Chrome：**
 1. 打开 `chrome://extensions`
 2. 开启右上角「开发者模式」
 3. 点击「加载已解压的扩展程序」
 4. 选择本项目根目录
 
-**Edge：**
+### Edge
+
 1. 打开 `edge://extensions`
 2. 开启左下角「开发人员模式」
 3. 点击「加载解压缩的扩展」
 4. 选择本项目根目录
 
-### 2. 配置 AI 后端（至少选一个）
+## 配置
 
-**选项 A：Ollama（本地，免费）**
-```bash
-ollama pull qwen2.5:7b
-```
+### 免费搜题接口
 
-**选项 B：LM Studio**
-1. 加载模型 → Start Server（默认端口 1234）
-2. 扩展设置：地址 `http://127.0.0.1:1234/v1`
+在设置页打开「免费搜题来源」并启用「全能搜题公开接口」。默认关闭，只有用户主动开启后才会联网查询。
 
-**选项 C：DeepSeek API**
-1. 注册 [platform.deepseek.com](https://platform.deepseek.com)
-2. 创建 API Key，填入扩展设置
+### 本地 AI
 
-## 使用
+可使用 Ollama、LM Studio 或其他 OpenAI 兼容本地服务。
 
-1. 打开任意做题网站
-2. 点击扩展图标 → 打开「答题模式」
-3. 自动检测题目 → 题库命中 → 直接标注 ✅
-4. 未命中 → 依次尝试本地 AI / 云端 API → 自动标注
+LM Studio 示例地址：
+
+`http://127.0.0.1:1234/v1`
+
+### AI API
+
+支持 DeepSeek、通义千问、SiliconFlow、Kimi 等 OpenAI 兼容 API。API Key 只保存在浏览器本地。
 
 ## 功能
 
 | 功能 | 说明 |
 |------|------|
-| 自动检测 | 扫描页面 DOM，识别选择题/填空题/简答题 |
+| 自动检测 | 扫描页面 DOM，识别选择题、填空题、简答题 |
 | 本地题库 | 自动缓存 Q&A，越用越快（上限 10000 条） |
-| 多 AI 后端 | 本地 AI（Ollama / LM Studio）+ 云端 API |
-| 自检诊断 | 一键检测所有 AI 连接状态 |
+| 免费搜题 | 可选接入全能搜题公开接口 |
+| 多 AI 后端 | 本地 AI + 用户自配 AI API |
+| 自检诊断 | 一键检测连接状态 |
 | 题库导入 | 支持 JSON 格式批量导入已有题库 |
-
-## 项目结构
-
-```
-auto-answer-extension/
-├── manifest.json          # Chrome/Edge Manifest V3
-├── docs/                  # 商店发布文档
-│   ├── privacy-policy.md
-│   └── store-description.md
-├── src/
-│   ├── background/        # Service Worker (推理调度)
-│   ├── content/           # Content Script (检测+标注)
-│   ├── lib/               # 工具库 (DB、AI 通信、匹配算法)
-│   ├── options/           # 设置页面
-│   └── popup/             # 扩展弹出菜单
-├── icons/                 # 扩展图标 (16/32/48/128)
-└── README.md
-```
 
 ## 隐私
 
-- 所有题目数据仅存储在本地浏览器 IndexedDB 中
-- AI API 调用仅在用户配置 API Key 后进行
-- 不使用第三方分析或跟踪
-- 详见 [隐私政策](docs/privacy-policy.md)
+- 本地题库仅存储在浏览器 IndexedDB 中。
+- 免费搜题接口默认关闭，开启后题目文本会发送到配置的公开接口。
+- AI API 仅在用户配置 API Key 后调用。
+- 不使用第三方分析或跟踪。
+- 详见 [隐私政策](docs/privacy-policy.md)。
 
 ## 已知限制
 
-- Beta 版本，主要测试环境为 XJTLU Moodle Quiz 页面
-- 其他做题平台可能需要调整题目检测逻辑
+- 当前主要测试环境为 XJTLU Moodle Quiz 页面。
+- 免费搜题接口、AI 模型和公开资料来源都可能返回错误答案，请自行核对。
+- 其他做题平台可能需要调整题目检测逻辑。
 
 ## 反馈与改进
 

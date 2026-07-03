@@ -2,30 +2,34 @@
   "../lib/types.js",
   "../lib/matcher.js",
   "../lib/db.js",
-  
+  "../lib/websearch.js",
   "../lib/ollama.js",
   "../lib/deepseek.js"
 );
 
 (function () {
   "use strict";
-  const { Types, DB, Matcher, Ollama, AiApi } = self.AutoAnswer;
+  const { Types, DB, Matcher, WebSearch, Ollama, AiApi } = self.AutoAnswer;
 
   let settings = {
     ollamaUrl: Types.DEFAULT_OLLAMA_URL,
     ollamaModel: Types.DEFAULT_OLLAMA_MODEL,
     aiApiUrl: Types.DEFAULT_AI_API_URL, aiApiKey: "", aiApiModel: Types.DEFAULT_AI_MODEL,
+    freeSearchEnabled: false,
+    freeSearchUrl: Types.DEFAULT_FREE_SEARCH_URL,
     syncToken: "", syncRepo: "b0nn111/auto-answer-extension", syncPath: "question-bank.json",
   };
 
   (async function loadSettings() {
     try {
-      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey"]);
+      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey", "freeSearchEnabled", "freeSearchUrl"]);
       if (s.ollamaUrl) settings.ollamaUrl = s.ollamaUrl;
       if (s.ollamaModel) settings.ollamaModel = s.ollamaModel;
-            if (s.aiApiUrl) settings.aiApiUrl = s.aiApiUrl;
+      if (s.aiApiUrl) settings.aiApiUrl = s.aiApiUrl;
       if (s.aiApiKey !== undefined) settings.aiApiKey = s.aiApiKey;
       if (s.aiApiModel) settings.aiApiModel = s.aiApiModel;
+      if (s.freeSearchEnabled !== undefined) settings.freeSearchEnabled = s.freeSearchEnabled === true;
+      if (s.freeSearchUrl) settings.freeSearchUrl = s.freeSearchUrl;
       // Migrate old deepseekKey setting
       if (!settings.aiApiKey && s.deepseekKey) settings.aiApiKey = s.deepseekKey;
     } catch (_) {}
@@ -68,11 +72,12 @@
       sendResponse({
         aiApi: { configured: !!settings.aiApiKey, connected: aiTest.ok, error: aiTest.error },
         ollama: { running: models !== null, models: models ? models.length : 0 },
+        freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl },
         database: { available: stats !== null, totalCached: stats ? stats.totalCached : 0, totalMatches: stats ? stats.totalMatches : 0 },
       });
     } catch (err) {
       const aiErr = settings.aiApiKey ? "自检异常" : "未配置";
-      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 } });
+      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, database: { available: false, totalCached: 0, totalMatches: 0 } });
     }
   }
 
@@ -98,7 +103,15 @@
     }
     const fuzzy = await DB.fuzzySearch(q.questionText);
     if (fuzzy) return { id: q.id, type: q.type, answer: fuzzy.answer, source: Types.ANSWER_SOURCE.CACHE, confidence: fuzzy.confidence };
-if (settings.ollamaUrl) {
+    if (settings.freeSearchEnabled) {
+      const searchResult = await WebSearch.search(q.questionText, { baseUrl: settings.freeSearchUrl });
+      if (searchResult.success) {
+        DB.addQuestion(q.questionText, searchResult.answer, q.options).catch(() => {});
+        return { id: q.id, type: q.type, answer: searchResult.answer, source: Types.ANSWER_SOURCE.FREE_SEARCH, confidence: searchResult.confidence };
+      }
+      console.log("[答题助手] 免费搜题未命中:", searchResult.error);
+    }
+    if (settings.ollamaUrl) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options });
       if (ollamaResult.success) {
         DB.addQuestion(q.questionText, ollamaResult.answer, q.options).catch(() => {});

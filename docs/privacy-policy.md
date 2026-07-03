@@ -1,46 +1,58 @@
-﻿# Privacy Policy for 自动答题助手 (Auto Answer Helper)
+# Privacy Policy for 自动答题助手 (Auto Answer Helper)
 
-**Last updated:** 2026-06-07
+**Last updated:** 2026-07-03
 
 ## Data Collection
 
-This extension collects the following data from web pages you visit:
+This extension may process the following data from quiz or question pages:
 
-- **Question text**: Text content of questions detected on web pages
-- **Page URLs**: The URL of the page where questions are detected
+- Question text detected on web pages
+- Answer options detected on web pages
+- Page URL where questions are detected
 
 ## How Data Is Used
 
-The collected data is used solely to provide the core functionality of the extension:
+The data is used only to provide the extension's answer-assistance features:
 
-1. **Local question bank**: Detected questions and their answers are stored locally in your browser's IndexedDB to enable faster responses on subsequent visits.
-2. **AI processing**: Question text may be sent to:
-   - A locally running AI service (e.g., Ollama, LM Studio) that you have configured
-   - A cloud AI API (e.g., DeepSeek, OpenAI-compatible API) that you have explicitly configured with your own API key
+1. **Local question bank**: question-answer pairs are stored locally in the browser's IndexedDB.
+2. **Free question-search source**: if the user enables the free search option, question text is sent to the configured public search endpoint.
+3. **Local AI**: if the user configures a local AI service, question text is sent to that configured local endpoint.
+4. **AI API**: if the user configures an API key and endpoint, question text is sent to that configured AI API.
 
 ## Data Storage
 
-- All question-answer pairs are stored **locally** in your browser's IndexedDB.
-- The local database never exceeds 10,000 entries.
-- You can clear the entire local database at any time through the extension settings page.
+- Local question-answer pairs are stored in browser IndexedDB.
+- The local database limit is 10,000 entries.
+- Users can clear the local question bank from the settings page.
+- API keys are stored in browser extension storage.
 
-## Data Sharing
+## Third-Party Data Sharing
 
-This extension does **not** share your data with any third party, except:
+This extension does not use analytics or tracking services.
 
-- When **you explicitly configure** a cloud AI API (by providing your own API key), question text is sent to that API for processing.
-- If you configure a local AI service, all data stays on your machine.
+Question text may be sent to third-party services only when the user explicitly enables or configures them:
+
+- Free question-search endpoint, disabled by default
+- User-configured cloud AI API
+
+The current default free question-search endpoint is:
+
+`https://study.jszkk.com/api/open/seek`
+
+Users can disable this feature or change the endpoint in the settings page.
 
 ## User Control
 
-- **Enable/Disable**: You can enable or disable the extension at any time via the popup toggle.
-- **Clear data**: You can clear all locally stored question-answer pairs from the settings page.
-- **Remove**: Uninstalling the extension removes all local data.
+- Enable or disable the extension from the popup.
+- Enable or disable the free question-search source from the settings page.
+- Configure or remove local AI and AI API settings.
+- Clear all local question-bank data from the settings page.
+- Uninstalling the extension removes local extension data.
 
-## Changes to This Policy
+## Accuracy Notice
 
-This privacy policy may be updated as the extension evolves. Changes will be reflected on this page.
+Answers from local cache, public question-search sources, local AI, or AI APIs may be incomplete or incorrect. Users should verify results independently.
 
 ## Contact
 
-For questions about this privacy policy, please contact the extension developer through the support page.
+If you have questions or suggestions, contact QQ: 3923636786.

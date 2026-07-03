@@ -55,6 +55,7 @@ function updateToggleUI(enabled) {
     async function runDiagnostics() {
   setStatus("diag-aiapi", "loading", "检测中...");
   setStatus("diag-localai", "loading", "检测中...");
+  setStatus("diag-freesearch", "loading", "检测中...");
   setStatus("diag-db", "loading", "检测中...");
   setStatus("diag-ext", "loading", "检测中...");
 
@@ -78,6 +79,12 @@ function updateToggleUI(enabled) {
       setStatus("diag-localai", "warn", "未运行");
     }
 
+    if (result.freeSearch?.enabled) {
+      setStatus("diag-freesearch", "ok", "已开启");
+    } else {
+      setStatus("diag-freesearch", "warn", "未开启");
+    }
+
     // Database
     const db = result.database;
     if (db !== undefined) {
@@ -89,6 +96,7 @@ function updateToggleUI(enabled) {
   } catch (e) {
     setStatus("diag-aiapi", "err", "通信失败");
     setStatus("diag-localai", "err", "通信失败");
+    setStatus("diag-freesearch", "err", "通信失败");
     setStatus("diag-db", "err", "通信失败");
     setStatus("diag-ext", "err", "Service Worker 未响应");
   }

@@ -15,6 +15,8 @@
       "aiApiKey",
       "aiApiModel",
       "deepseekKey",
+      "freeSearchEnabled",
+      "freeSearchUrl",
     ]);
 
     if (stored.ollamaUrl) $("ollamaUrl").value = stored.ollamaUrl;
@@ -22,6 +24,8 @@
     if (stored.aiApiUrl) $("aiApiUrl").value = stored.aiApiUrl;
     if (stored.aiApiModel) $("aiApiModel").value = stored.aiApiModel;
     if (stored.aiApiKey || stored.deepseekKey) $("aiApiKey").value = stored.aiApiKey || stored.deepseekKey;
+    $("freeSearchEnabled").checked = stored.freeSearchEnabled === true;
+    if (stored.freeSearchUrl) $("freeSearchUrl").value = stored.freeSearchUrl;
   }
 
   async function saveSettings() {
@@ -31,6 +35,8 @@
       aiApiUrl: $("aiApiUrl").value.trim() || Types.DEFAULT_AI_API_URL,
       aiApiModel: $("aiApiModel").value.trim() || Types.DEFAULT_AI_MODEL,
       aiApiKey: $("aiApiKey").value.trim(),
+      freeSearchEnabled: $("freeSearchEnabled").checked,
+      freeSearchUrl: $("freeSearchUrl").value.trim() || Types.DEFAULT_FREE_SEARCH_URL,
     };
 
     await chrome.storage.sync.set(settings);

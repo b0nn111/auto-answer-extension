@@ -47,6 +47,24 @@
     </section>
 
     <section>
+      <h2>🔎 免费搜题来源</h2>
+      <label class="checkbox-row" for="freeSearchEnabled">
+        <span>
+          <strong>启用全能搜题公开接口</strong>
+          <em>未命中本地题库时，将题目文本发送到该公开接口查询。</em>
+        </span>
+        <input type="checkbox" id="freeSearchEnabled">
+      </label>
+      <div class="field">
+        <label for="freeSearchUrl">接口地址</label>
+        <input type="url" id="freeSearchUrl" value="https://study.jszkk.com/api/open/seek" placeholder="https://study.jszkk.com/api/open/seek">
+      </div>
+      <p class="hint source-note">
+        默认关闭。开启后会调用全能搜题公开接口；返回结果会缓存到本地题库。请注意：公开题库数据来源由第三方提供，答案可能不完整或不准确。
+      </p>
+    </section>
+
+    <section>
       <h2>📚 题库管理</h2>
       <div id="stats" class="stats">
         <div class="stat-item">
@@ -73,6 +91,14 @@
       </div>
       <button id="importBtn" class="btn-sm">📤 导入</button>
       <div id="importStatus" class="status"></div>
+    </section>
+
+    <section>
+      <h2>🧾 数据来源说明</h2>
+      <p class="hint source-note">
+        本扩展按顺序尝试：本地题库 → 免费搜题接口（仅在开启后）→ 本地 AI → AI API（仅在配置 Key 后）。
+        本地题库保存在浏览器 IndexedDB 中；免费搜题接口和 AI API 会接收题目文本；本地 AI 地址指向本机时数据不离开设备。
+      </p>
     </section>
 
     <div class="actions">
