@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "自动答题助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "自动检测网页题目，优先题库命中，未命中则调用 AI 辅助",
   "permissions": ["storage"],
   "host_permissions": [
