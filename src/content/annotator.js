@@ -54,8 +54,7 @@
       ai_api: { cls: "aa-badge--deepseek", label: "🧠" },
     };
     const m = map[source] || map.ollama;
-    // Show the answer letter if it's a single character (A/B/C/D)
-    const answer = answerText && answerText.length <= 3000 ? " " + answerText.toUpperCase() : "";
+    const answer = formatAnswerForBadge(answerText);
     const pct = confidence ? " " + (confidence * 100).toFixed(0) + "%" : "";
     return '<span class="aa-badge ' + m.cls + '">✅' + answer + pct + " " + m.label + "</span>";
   }
@@ -64,55 +63,48 @@
   function annotateChoice(container, result) {
     injectStyles();
     const answerText = (result.answer || "").trim();
-    const answerLower = answerText.toLowerCase();
+    const answer = parseAnswer(answerText);
     const badge = sourceBadge(result.source, result.confidence, answerText);
 
-    // Find all option-like elements inside the container
-    const allLabels = container.querySelectorAll("label, .option, .answer, li, span.option-text");
+    const candidates = getChoiceCandidates(container);
 
     let matchedEl = null;
     let bestScore = 0;
 
-    allLabels.forEach((el) => {
-      const txt = el.textContent.toLowerCase().trim();
+    candidates.forEach((candidate) => {
+      const txt = candidate.text.toLowerCase().trim();
       if (!txt || txt.length < 2) return;
 
-      // 1. Direct match: answer letter (A/B/C/D) followed by . or )
-      const letterMatch = answerLower.match(/^([a-d])[\s\.\)、]*(.*)$/);
-      if (letterMatch) {
-        const letter = letterMatch[1];
-        const pattern = new RegExp("^\\s*" + letter + "[\\.\\)、]", "i");
+      if (answer.letter && candidate.letter && answer.letter === candidate.letter) {
+        matchedEl = candidate.element;
+        bestScore = 1.0;
+        return;
+      }
+
+      if (answer.letter && !candidate.letter) {
+        const pattern = new RegExp("^\\s*" + answer.letter + "[\\.\\)、]", "i");
         if (pattern.test(txt)) {
-          matchedEl = el;
+          matchedEl = candidate.element;
           bestScore = 1.0;
           return;
         }
       }
 
-      // 2. Single letter answer
-      if (/^[a-d]$/.test(answerLower)) {
-        const pattern = new RegExp("^\\s*" + answerLower + "[\\.\\)、]", "i");
-        if (pattern.test(txt)) {
-          matchedEl = el;
-          bestScore = 1.0;
-          return;
-        }
-      }
-
-      // 3. Simple Jaccard similarity
-      const similarity = jaccardSimple(txt, answerLower);
+      const compareText = answer.optionText || answer.raw;
+      const similarity = jaccardSimple(candidate.optionText.toLowerCase(), compareText.toLowerCase());
       if (similarity > bestScore) {
         bestScore = similarity;
-        matchedEl = el;
+        matchedEl = candidate.element;
       }
     });
 
     if (matchedEl && bestScore > 0.1) {
       matchedEl.classList.add("aa-highlight-option");
-      matchedEl.insertAdjacentHTML("beforeend", badge);
+      const badgeTarget = getBadgeTarget(matchedEl);
+      badgeTarget.insertAdjacentHTML("beforeend", badge);
     } else {
       // Fallback: find the first option-like child and append after it
-      const firstOpt = container.querySelector("label, .option, .answer, li, input[type=radio], input[type=checkbox]");
+      const firstOpt = candidates[0]?.element || container.querySelector("label, .option, li, input[type=radio], input[type=checkbox]");
       if (firstOpt) {
         // Insert badge after the first option's parent
         const parent = firstOpt.closest("label, div, li") || firstOpt;
@@ -121,6 +113,67 @@
         container.insertAdjacentHTML("beforeend", badge);
       }
     }
+  }
+
+  function getChoiceCandidates(container) {
+    const moodleRows = Array.from(container.querySelectorAll(".answer .r0, .answer .r1"));
+    const rows = moodleRows.length
+      ? moodleRows
+      : Array.from(container.querySelectorAll("label, .option, li, span.option-text"));
+
+    const seen = new Set();
+    const candidates = [];
+    rows.forEach((row) => {
+      if (!row || seen.has(row)) return;
+      seen.add(row);
+      const labelEl = row.querySelector('[data-region="answer-label"]') || row;
+      const numberText = cleanText(labelEl.querySelector(".answernumber"));
+      const letter = parseOptionLetter(numberText) || parseOptionLetter(labelEl.textContent);
+      let optionText = cleanText(labelEl, [".answernumber", ".aa-badge"]);
+      optionText = optionText.replace(/^[a-z]\s*[\.\)、]\s*/i, "").trim();
+      const fullText = cleanText(row, [".aa-badge"]);
+      if (!optionText || optionText.length < 1) return;
+      candidates.push({ element: row, letter, optionText, text: fullText || optionText });
+    });
+    return candidates;
+  }
+
+  function getBadgeTarget(row) {
+    return row.querySelector(".flex-fill") ||
+      row.querySelector('[data-region="answer-label"]') ||
+      row;
+  }
+
+  function parseAnswer(text) {
+    const raw = String(text || "").trim();
+    const match = raw.match(/^([a-z])\s*[\.\)、]?\s*(.*)$/i);
+    const letter = match && /^[a-d]$/i.test(match[1]) ? match[1].toUpperCase() : "";
+    const optionText = letter ? (match[2] || "").trim() : raw;
+    return { raw, letter, optionText };
+  }
+
+  function parseOptionLetter(text) {
+    const match = String(text || "").trim().match(/^([a-z])\s*[\.\)、]/i);
+    return match ? match[1].toUpperCase() : "";
+  }
+
+  function cleanText(element, removeSelectors) {
+    if (!element) return "";
+    const clone = element.cloneNode(true);
+    (removeSelectors || []).forEach((selector) => clone.querySelectorAll(selector).forEach((el) => el.remove()));
+    return (clone.textContent || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function formatAnswerForBadge(answerText) {
+    const text = String(answerText || "").trim();
+    if (!text) return "";
+    const short = text.length > 120 ? text.slice(0, 117) + "..." : text;
+    const match = short.match(/^([a-z])(\s*[\.\)、]?.*)$/i);
+    if (match && /^[a-d]$/i.test(match[1])) return " " + match[1].toUpperCase() + match[2];
+    return " " + short;
   }
 
   function annotateFill(container, result) {

@@ -34,7 +34,9 @@
         "如果是填空题或简答题，直接输出答案，不要解释。\n\n" +
         "题目：" + questionText;
       if (options && options.length > 0) {
-        prompt += "\n\n选项：\n" + options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("\n");
+        if (!questionContainsOptions(questionText, options)) {
+          prompt += "\n\n选项：\n" + options.map(formatOptionForPrompt).join("\n");
+        }
       }
 
       try {
@@ -52,6 +54,17 @@
       }
     },
   };
+
+  function questionContainsOptions(questionText, options) {
+    const text = String(questionText || "");
+    return options.every((option) => text.includes(String(option || "").trim()));
+  }
+
+  function formatOptionForPrompt(option, index) {
+    const text = String(option || "").trim();
+    if (/^[A-Z]\s*[\.\)、]/i.test(text)) return text;
+    return String.fromCharCode(65 + index) + ". " + text;
+  }
 })();
 
 

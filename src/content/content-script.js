@@ -115,13 +115,18 @@
     const addQ = (q, el) => {
       if (!q) return false;
       if (el.querySelector(".aa-badge")) return false;
-      const key = Matcher.normalizeText(q.questionText).slice(0, 80);
+      const key = q.dedupeKey || Matcher.normalizeText(q.questionText).slice(0, 120);
       if (detectedTexts.has(key)) return false;
       detectedTexts.add(key);
       elementMap.set(q.id, el);
       questions.push(q);
       return true;
     };
+
+    const moodleQuestions = detectMoodleQuestions();
+    for (const item of moodleQuestions) addQ(item.question, item.element);
+    if (questions.length > 0) return questions;
+
     const fieldsets = document.querySelectorAll("fieldset");
     for (let i = 0; i < Math.min(fieldsets.length, 30); i++) {
       const el = fieldsets[i];
@@ -158,6 +163,122 @@
     }
     return questions;
   }
+
+  function detectMoodleQuestions() {
+    const items = [];
+    const containers = document.querySelectorAll(".que");
+    for (let i = 0; i < Math.min(containers.length, 50); i++) {
+      const el = containers[i];
+      const q = buildMoodleQuestion(el);
+      if (q) items.push({ question: q, element: el });
+    }
+    return items;
+  }
+
+  function buildMoodleQuestion(container) {
+    const stemEl = container.querySelector(".qtext");
+    const stemText = cleanElementText(stemEl || container).trim();
+    if (!stemText || stemText.length < 3) return null;
+
+    const hasRadio = container.querySelector('input[type="radio"]') !== null;
+    const hasCheckbox = container.querySelector('input[type="checkbox"]') !== null;
+    const hasTextInput =
+      container.querySelector('input[type="text"], input[type="number"], textarea') !== null;
+
+    const id = `q_${++questionCounter}`;
+    let type = Types.QUESTION_TYPE.UNKNOWN;
+    let options = [];
+    let questionText = stemText;
+
+    if (hasRadio || hasCheckbox) {
+      type = Types.QUESTION_TYPE.CHOICE;
+      options = extractMoodleOptions(container);
+      if (options.length < 2) return null;
+      questionText = [stemText, ...options].join("\n");
+    } else if (hasTextInput) {
+      type = Types.QUESTION_TYPE.FILL;
+    } else if (stemText.length > 20) {
+      type = Types.QUESTION_TYPE.SHORT_ANSWER;
+    } else {
+      return null;
+    }
+
+    const stableId = container.id || container.querySelector("[id]")?.id || questionText;
+    return {
+      id,
+      questionText,
+      stemText,
+      type,
+      options,
+      dedupeKey: "moodle:" + Matcher.normalizeText(stableId).slice(0, 120),
+    };
+  }
+
+  function extractMoodleOptions(container) {
+    const answerRoot = container.querySelector(".answer") || container;
+    const rows = uniqueElements([
+      ...answerRoot.querySelectorAll(".r0, .r1"),
+      ...answerRoot.querySelectorAll('[data-region="answer-label"]'),
+      ...answerRoot.querySelectorAll("label"),
+    ])
+      .map((el) => el.closest(".r0, .r1, label") || el)
+      .filter((el) => el && answerRoot.contains(el))
+      .filter((el) =>
+        el.querySelector('input[type="radio"], input[type="checkbox"]') ||
+        el.matches('[data-region="answer-label"], label') ||
+        el.querySelector('[data-region="answer-label"]')
+      );
+
+    const result = [];
+    const seen = new Set();
+    rows.forEach((row, index) => {
+      const labelEl = row.querySelector('[data-region="answer-label"]') || row.querySelector("label") || row;
+      const rawNumber = cleanElementText(labelEl.querySelector(".answernumber") || null);
+      let text = cleanElementText(labelEl, [".answernumber", ".aa-badge"]);
+      text = text.replace(/^[a-z]\s*[\.\)、]\s*/i, "").trim();
+      if (!text || text.length > 500) return;
+      const letter = normalizeOptionLetter(rawNumber) || normalizeOptionLetter(labelEl.textContent) || String.fromCharCode(65 + result.length);
+      const value = `${letter}. ${text}`;
+      const key = Matcher.normalizeText(value);
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push(value);
+    });
+
+    return result;
+  }
+
+  function normalizeOptionLetter(text) {
+    const m = String(text || "").trim().match(/^([a-z])\s*[\.\)、]/i);
+    if (!m) return "";
+    const upper = m[1].toUpperCase();
+    return /^[A-Z]$/.test(upper) ? upper : "";
+  }
+
+  function uniqueElements(elements) {
+    const result = [];
+    const seen = new Set();
+    elements.forEach((el) => {
+      if (!el || seen.has(el)) return;
+      seen.add(el);
+      result.push(el);
+    });
+    return result;
+  }
+
+  function cleanElementText(element, removeSelectors) {
+    if (!element) return "";
+    const clone = element.cloneNode(true);
+    const selectors = [".aa-badge", ".aa-answer-toggle", ".aa-answer-body"].concat(removeSelectors || []);
+    selectors.forEach((sel) => clone.querySelectorAll(sel).forEach((el) => el.remove()));
+    return (clone.textContent || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t\r\f\v]+/g, " ")
+      .replace(/\n\s+/g, "\n")
+      .replace(/\s+\n/g, "\n")
+      .trim();
+  }
+
   function buildQuestion(element, signals) {
     signals = signals || Matcher.extractQuestionSignals(element);
     let text = (element.textContent || "").trim();

@@ -13,8 +13,8 @@
       if (!apiKey && !baseUrl.match(/^https?:\/\/(localhost|127\.0\.0\.1|::1)/)) return { success: false, error: "No API key configured" };
 
       let prompt = questionText;
-      if (options && options.length > 0) {
-        prompt += "\n\n选项：\n" + options.map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("\n");
+      if (options && options.length > 0 && !questionContainsOptions(questionText, options)) {
+        prompt += "\n\n选项：\n" + options.map(formatOptionForPrompt).join("\n");
       }
 
       const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
@@ -87,6 +87,17 @@
       }
     },
   };
+
+  function questionContainsOptions(questionText, options) {
+    const text = String(questionText || "");
+    return options.every((option) => text.includes(String(option || "").trim()));
+  }
+
+  function formatOptionForPrompt(option, index) {
+    const text = String(option || "").trim();
+    if (/^[A-Z]\s*[\.\)、]/i.test(text)) return text;
+    return String.fromCharCode(65 + index) + ". " + text;
+  }
 })();
 
 
