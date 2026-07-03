@@ -20,7 +20,7 @@
 
   (async function loadSettings() {
     try {
-      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel"]);
+      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey"]);
       if (s.ollamaUrl) settings.ollamaUrl = s.ollamaUrl;
       if (s.ollamaModel) settings.ollamaModel = s.ollamaModel;
             if (s.aiApiUrl) settings.aiApiUrl = s.aiApiUrl;

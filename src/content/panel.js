@@ -84,10 +84,9 @@
 
   async function checkAIStatus() {
     try {
-      const s = await chrome.storage.sync.get(["deepseekKey"]);
-      // If no Ollama check and no DeepSeek key, show setup hint
-      if (!s.deepseekKey) {
-        // Try Ollama check — if it fails too, show "no AI" message
+      const s = await chrome.storage.sync.get(["aiApiKey", "deepseekKey"]);
+      // If no cloud API key is configured, show a setup hint after scanning has had time to respond.
+      if (!s.aiApiKey && !s.deepseekKey) {
         setTimeout(() => {
           const cs = root.AutoAnswer.content;
           if (cs && cs._noAIResponse) {
@@ -127,8 +126,8 @@
           `<b>免费 AI 方案（推荐）：AI API</b>（如 DeepSeek、通义千问、SiliconFlow）\n` +
           `1. 打开 你使用的 AI 平台 → 注册 → 创建 API Key\n` +
           `2. 右键扩展图标 → 选项 → 填入 Key\n\n` +
-          `<b>本地方案：Ollama</b>\n` +
-          `安装 ollama.com → 拉取模型即可`;
+          `<b>本地方案：本地 AI</b>\n` +
+          `可使用 Ollama、LM Studio 或其他 OpenAI 兼容服务`;
       }
       return;
     }

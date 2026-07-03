@@ -91,3 +91,7 @@ auto-answer-extension/
 
 - Beta 版本，主要测试环境为 XJTLU Moodle Quiz 页面
 - 其他做题平台可能需要调整题目检测逻辑
+
+## 反馈与改进
+
+如果有任何问题以及改进请加 QQ：3923636786

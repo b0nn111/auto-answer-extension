@@ -71,7 +71,7 @@ function updateToggleUI(enabled) {
       setStatus("diag-aiapi", "warn", "未配置");
     }
 
-    // Ollama
+    // Local AI
     if (result.ollama?.running) {
       setStatus("diag-localai", "ok", "运行中 · " + (result.ollama.models || 0) + " 模型");
     } else {
@@ -81,10 +81,7 @@ function updateToggleUI(enabled) {
     // Database
     const db = result.database;
     if (db !== undefined) {
-      const rate = db.totalCached > 0
-        ? ((db.totalMatches / Math.max(db.totalCached, 1)) * 100).toFixed(0) + "%"
-        : "0%";
-      setStatus("diag-db", "ok", db.totalCached + " 题 · 命中 " + rate);
+      setStatus("diag-db", "ok", db.totalCached + " 题 · 命中 " + (db.totalMatches || 0) + " 次");
     } else {
       setStatus("diag-db", "err", "不可用");
     }

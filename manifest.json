@@ -1,4 +1,4 @@
-﻿{
+{
   "manifest_version": 3,
   "name": "自动答题助手",
   "version": "1.0.0",
@@ -7,7 +7,7 @@
   "host_permissions": [
     "http://localhost:*/*",
     "http://127.0.0.1:*/*",
-    "https://api.deepseek.com/*"
+    "https://*/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js"

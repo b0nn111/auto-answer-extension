@@ -32,6 +32,7 @@
 - 支持 Chrome 和 Edge 浏览器
 - 当前版本：1.0.0 (Beta)
 - 测试环境：XJTLU Moodle Quiz 页面
+- 如果有任何问题以及改进请加 QQ：3923636786
 
 ## Category
 Productivity / Education
