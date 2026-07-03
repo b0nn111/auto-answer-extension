@@ -170,3 +170,14 @@ input:focus, select:focus {
 .status.ok { color: #22c55e; }
 .status.err { color: #dc2626; }
 
+.feedback-line {
+  margin-top: 18px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #4b5563;
+  text-align: center;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+}
+
