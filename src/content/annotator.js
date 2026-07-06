@@ -206,16 +206,17 @@
   function annotateFill(container, result) {
     injectStyles();
     const inputs = container.querySelectorAll("input[type=text], textarea");
-    if (inputs.length === 0) return;
+    if (inputs.length === 0) {
+      annotateText(container, result);
+      return;
+    }
     const input = inputs[0];
-    const rect = input.getBoundingClientRect();
-    const hint = document.createElement("div");
-    hint.className = "aa-ghost-hint";
-    hint.textContent = "✏️ " + (result.answer || "(未识别)");
-    hint.style.left = rect.left + "px";
-    hint.style.top = rect.top - 28 + "px";
-    input.addEventListener("input", () => hint.remove(), { once: true });
-    document.body.appendChild(hint);
+    const wrap = document.createElement("div");
+    wrap.className = "aa-answer-body aa-open";
+    wrap.innerHTML = '<strong>填空参考答案：</strong> ' + escapeHtml(result.answer || "(未识别)") + " " +
+      sourceBadge(result.source, result.confidence, result.answer) + stemTip(result);
+    input.insertAdjacentElement("afterend", wrap);
+    appendCandidateToggle(container, result);
   }
 
   function annotateText(container, result) {
