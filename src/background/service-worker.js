@@ -145,9 +145,6 @@
     if (settings.freeSearchEnabled) {
       const searchResult = await WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options });
       if (searchResult.success) {
-        if (!searchResult.displayAsText) {
-          DB.addQuestion(q.questionText, searchResult.answer, q.options).catch(() => {});
-        }
         candidates.push(makeCandidate(q, searchResult.answer, Types.ANSWER_SOURCE.FREE_SEARCH, searchResult.confidence, {
           displayAsText: searchResult.displayAsText === true,
           warning: searchResult.warning,
@@ -158,14 +155,12 @@
     if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
       if (ollamaResult.success) {
-        DB.addQuestion(q.questionText, ollamaResult.answer, q.options).catch(() => {});
         candidates.push(makeCandidate(q, ollamaResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, materialContext.length ? Math.min(0.92, ollamaResult.confidence + 0.08) : ollamaResult.confidence, { materials: materialContext }));
       }
     }
     if (settings.aiApiKey) {
       const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext });
       if (aiResult.success) {
-        DB.addQuestion(q.questionText, aiResult.answer, q.options).catch(() => {});
         candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, { materials: materialContext }));
       }
         else {
