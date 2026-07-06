@@ -24,6 +24,18 @@
       .aa-badge--ollama { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
       .aa-badge--deepseek { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
       .aa-badge--failed { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+      .aa-stem-tip {
+        display:inline-flex; align-items:center; justify-content:center;
+        margin-left:6px; width:20px; height:20px; border-radius:10px;
+        font-size:12px; color:#475569; background:#f8fafc; border:1px solid #cbd5e1;
+        cursor:help; position:relative; vertical-align:middle;
+      }
+      .aa-stem-tip:hover::after {
+        content:attr(data-stem); position:absolute; left:0; top:24px; z-index:2147483647;
+        width:min(520px, 70vw); padding:10px 12px; border-radius:8px;
+        background:#111827; color:white; font-size:12px; line-height:1.5;
+        box-shadow:0 8px 24px rgba(0,0,0,0.18); white-space:pre-wrap;
+      }
       .aa-ghost-hint {
         position:absolute; font-size:13px; color:#9ca3af; pointer-events:none;
         padding:4px 8px; z-index:9999; background:#f9fafb; border:1px dashed #d1d5db;
@@ -42,6 +54,11 @@
         line-height:1.5; display:none;
       }
       .aa-answer-body.aa-open { display:block; }
+      .aa-candidate { padding:6px 0; border-top:1px solid #e5e7eb; }
+      .aa-candidate:first-child { border-top:0; padding-top:0; }
+      .aa-candidate-source { font-weight:700; color:#374151; }
+      .aa-candidate-meta { color:#64748b; font-size:12px; margin-left:4px; }
+      .aa-candidate-answer { margin-top:2px; white-space:pre-wrap; }
       .aa-highlight-option { outline:2px solid #22c55e; outline-offset:2px; border-radius:4px; background:#f0fdf4; }
     `;
     document.head.appendChild(style);
@@ -66,9 +83,13 @@
   // ── Annotate choice: put ✅ badge after the correct option ──
   function annotateChoice(container, result) {
     injectStyles();
+    if (result.displayAsText) {
+      annotateText(container, result);
+      return;
+    }
     const answerText = (result.answer || "").trim();
     const answer = parseAnswer(answerText);
-    const badge = sourceBadge(result.source, result.confidence, answerText);
+    const badge = sourceBadge(result.source, result.confidence, answerText) + stemTip(result);
 
     const candidates = getChoiceCandidates(container);
 
@@ -106,6 +127,7 @@
       matchedEl.classList.add("aa-highlight-option");
       const badgeTarget = getBadgeTarget(matchedEl);
       badgeTarget.insertAdjacentHTML("beforeend", badge);
+      appendCandidateToggle(container, result);
     } else {
       // Fallback: find the first option-like child and append after it
       const firstOpt = candidates[0]?.element || container.querySelector("label, .option, li, input[type=radio], input[type=checkbox]");
@@ -116,6 +138,7 @@
       } else {
         container.insertAdjacentHTML("beforeend", badge);
       }
+      appendCandidateToggle(container, result);
     }
   }
 
@@ -197,16 +220,18 @@
 
   function annotateText(container, result) {
     injectStyles();
-    const badge = sourceBadge(result.source, result.confidence, result.answer);
+    const badge = sourceBadge(result.source, result.confidence, result.answer) + stemTip(result);
     const toggle = document.createElement("div");
     toggle.className = "aa-answer-toggle";
-    toggle.textContent = "📖 查看答案";
+    toggle.textContent = result.candidates && result.candidates.length > 1 ? "📖 查看其他答案" : "📖 查看答案";
     const body = document.createElement("div");
     body.className = "aa-answer-body";
-    body.textContent = result.answer || "(未识别)";
+    body.innerHTML = renderCandidateList(result);
     toggle.addEventListener("click", () => {
       body.classList.toggle("aa-open");
-      toggle.textContent = body.classList.contains("aa-open") ? "📖 收起答案" : "📖 查看答案";
+      toggle.textContent = body.classList.contains("aa-open")
+        ? "📖 收起答案"
+        : (result.candidates && result.candidates.length > 1 ? "📖 查看其他答案" : "📖 查看答案");
     });
     container.insertAdjacentHTML("beforeend", badge);
     container.appendChild(toggle);
@@ -219,6 +244,44 @@
     container.insertAdjacentHTML("beforeend", '<span class="aa-badge aa-badge--failed">❌ ' + escapeHtml(reason) + "</span>");
   }
 
+  function appendCandidateToggle(container, result) {
+    if (!result.candidates || result.candidates.length <= 1) return;
+    const toggle = document.createElement("div");
+    toggle.className = "aa-answer-toggle";
+    toggle.textContent = "📖 查看其他答案";
+    const body = document.createElement("div");
+    body.className = "aa-answer-body";
+    body.innerHTML = renderCandidateList(result);
+    toggle.addEventListener("click", () => {
+      body.classList.toggle("aa-open");
+      toggle.textContent = body.classList.contains("aa-open") ? "📖 收起答案" : "📖 查看其他答案";
+    });
+    container.appendChild(toggle);
+    container.appendChild(body);
+  }
+
+  function renderCandidateList(result) {
+    const candidates = result.candidates && result.candidates.length
+      ? result.candidates
+      : [{ answer: result.answer, source: result.source, sourceLabel: sourceLabel(result.source), confidence: result.confidence, warning: result.warning }];
+    return candidates.map((item, index) => {
+      const title = (index === 0 ? "最佳 · " : "") + (item.sourceLabel || sourceLabel(item.source));
+      const pct = typeof item.confidence === "number" ? Math.round(item.confidence * 100) + "%" : "";
+      const warning = item.warning ? " · " + item.warning : "";
+      return '<div class="aa-candidate">' +
+        '<div><span class="aa-candidate-source">' + escapeHtml(title) + '</span>' +
+        '<span class="aa-candidate-meta">' + escapeHtml(pct + warning) + '</span></div>' +
+        '<div class="aa-candidate-answer">' + escapeHtml(item.answer || "(空)") + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function stemTip(result) {
+    const stem = String(result.questionStem || "").trim();
+    if (!stem) return "";
+    return '<span class="aa-stem-tip" data-stem="' + escapeHtml(stem) + '" title="悬停查看原题题干">题</span>';
+  }
+
   function formatFailedReason(result) {
     const error = String(result?.error || "").trim();
     if (error.includes("公开接口") || error.includes("免费搜题")) return error;
@@ -228,6 +291,17 @@
 
   function escapeHtml(text) {
     return String(text || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
+
+  function sourceLabel(source) {
+    return {
+      cache: "本地题库",
+      material: "本地资料库",
+      material_ai: "资料库+AI",
+      free_search: "公共搜题",
+      ollama: "本地 AI",
+      ai_api: "AI API",
+    }[source] || source || "未知来源";
   }
 
   function jaccardSimple(a, b) {

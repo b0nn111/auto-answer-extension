@@ -133,13 +133,14 @@
 
   async function processQuestion(q) {
     const hash = await Matcher.hashText(q.questionText);
+    const candidates = [];
     const exact = await DB.getByHash(hash);
     if (exact) {
       DB._incrementHit(hash, exact).catch(() => {});
-      return { id: q.id, type: q.type, answer: exact.answer, source: Types.ANSWER_SOURCE.CACHE, confidence: exact.confidence };
+      candidates.push(makeCandidate(q, exact.answer, Types.ANSWER_SOURCE.CACHE, exact.confidence, { cache: true }));
     }
     const fuzzy = await DB.fuzzySearch(q.questionText);
-    if (fuzzy) return { id: q.id, type: q.type, answer: fuzzy.answer, source: Types.ANSWER_SOURCE.CACHE, confidence: fuzzy.confidence };
+    if (fuzzy) candidates.push(makeCandidate(q, fuzzy.answer, Types.ANSWER_SOURCE.CACHE, fuzzy.confidence, { cache: true }));
     const materialContext = await MaterialRetriever.retrieve(q.questionText, q.options).catch(() => []);
     if (settings.freeSearchEnabled) {
       const searchResult = await WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options });
@@ -147,46 +148,129 @@
         if (!searchResult.displayAsText) {
           DB.addQuestion(q.questionText, searchResult.answer, q.options).catch(() => {});
         }
-        return {
-          id: q.id,
-          type: q.type,
-          answer: searchResult.answer,
-          source: Types.ANSWER_SOURCE.FREE_SEARCH,
-          confidence: searchResult.confidence,
+        candidates.push(makeCandidate(q, searchResult.answer, Types.ANSWER_SOURCE.FREE_SEARCH, searchResult.confidence, {
           displayAsText: searchResult.displayAsText === true,
           warning: searchResult.warning,
-        };
+        }));
       }
       console.log("[答题助手] 免费搜题未命中:", searchResult.error);
-      if (!settings.aiApiKey && !(await Ollama.checkRunning(settings.ollamaUrl).catch(() => false))) {
-        return {
-          id: q.id,
-          type: q.type,
-          answer: "",
-          source: Types.ANSWER_SOURCE.FAILED,
-          confidence: 0,
-          error: searchResult.error || "公开接口未命中",
-        };
-      }
     }
     if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
       if (ollamaResult.success) {
         DB.addQuestion(q.questionText, ollamaResult.answer, q.options).catch(() => {});
-        return { id: q.id, type: q.type, answer: ollamaResult.answer, source: materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, confidence: materialContext.length ? Math.min(0.92, ollamaResult.confidence + 0.08) : ollamaResult.confidence, materials: materialContext };
+        candidates.push(makeCandidate(q, ollamaResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, materialContext.length ? Math.min(0.92, ollamaResult.confidence + 0.08) : ollamaResult.confidence, { materials: materialContext }));
       }
     }
     if (settings.aiApiKey) {
       const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext });
       if (aiResult.success) {
         DB.addQuestion(q.questionText, aiResult.answer, q.options).catch(() => {});
-        return { id: q.id, type: q.type, answer: aiResult.answer, source: materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, confidence: materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, materials: materialContext };
+        candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, { materials: materialContext }));
       }
         else {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);
       }
     }
+    const ranked = rankCandidates(candidates);
+    if (ranked.length > 0) {
+      const best = ranked[0];
+      return {
+        id: q.id,
+        type: q.type,
+        answer: best.answer,
+        source: best.source,
+        confidence: best.confidence,
+        displayAsText: best.displayAsText === true,
+        warning: best.warning,
+        questionStem: q.stemText || q.questionText,
+        candidates: ranked,
+      };
+    }
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
+  }
+
+  function makeCandidate(q, answer, source, confidence, extra) {
+    const optionMatch = matchOption(answer, q.options || []);
+    const displayAsText = extra?.displayAsText === true || (q.type === Types.QUESTION_TYPE.CHOICE && !optionMatch);
+    const adjustedConfidence = scoreCandidate(source, confidence, optionMatch, displayAsText);
+    return {
+      answer: optionMatch || String(answer || "").trim(),
+      rawAnswer: String(answer || "").trim(),
+      source,
+      sourceLabel: sourceLabel(source),
+      confidence: adjustedConfidence,
+      displayAsText,
+      warning: extra?.warning || (displayAsText && q.type === Types.QUESTION_TYPE.CHOICE ? "答案未能对应选项，按文本展示" : ""),
+      materials: extra?.materials || [],
+    };
+  }
+
+  function rankCandidates(candidates) {
+    const seen = new Set();
+    return candidates
+      .filter((item) => item.answer)
+      .sort((a, b) => b.confidence - a.confidence)
+      .filter((item) => {
+        const key = Matcher.normalizeText(item.source + ":" + item.answer);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function scoreCandidate(source, confidence, optionMatch, displayAsText) {
+    const sourceBoost = {
+      cache: 0.12,
+      material_ai: 0.08,
+      ai_api: 0.06,
+      ollama: 0.03,
+      free_search: -0.08,
+      material: 0.04,
+    }[source] || 0;
+    const matchBoost = optionMatch ? 0.08 : 0;
+    const textPenalty = displayAsText ? -0.18 : 0;
+    return Math.max(0.05, Math.min(0.99, Number(confidence || 0.5) + sourceBoost + matchBoost + textPenalty));
+  }
+
+  function matchOption(answer, options) {
+    if (!options || options.length === 0) return "";
+    const parsed = parseChoiceText(answer);
+    const normAnswer = Matcher.normalizeText(parsed.text || answer);
+    let best = null;
+    options.forEach((option, index) => {
+      const parsedOption = parseChoiceText(option);
+      const letter = parsedOption.letter || String.fromCharCode(65 + index);
+      const text = parsedOption.text || String(option || "");
+      const normOption = Matcher.normalizeText(text);
+      let score = 0;
+      if (parsed.letter && parsed.letter === letter) score = 1;
+      if (normAnswer && normOption) {
+        if (normAnswer === normOption) score = Math.max(score, 0.98);
+        if (normAnswer.includes(normOption) || normOption.includes(normAnswer)) score = Math.max(score, 0.9);
+        score = Math.max(score, Matcher.jaccardSimilarity(normAnswer, normOption));
+      }
+      if (!best || score > best.score) best = { score, letter, text };
+    });
+    return best && best.score >= 0.55 ? best.letter + ". " + best.text : "";
+  }
+
+  function parseChoiceText(text) {
+    const raw = String(text || "").trim();
+    const match = raw.match(/^([A-Da-d])(?:\s*[\.\)、]|\s*$)\s*(.*)$/);
+    if (!match) return { letter: "", text: raw };
+    return { letter: match[1].toUpperCase(), text: (match[2] || "").trim() };
+  }
+
+  function sourceLabel(source) {
+    return {
+      cache: "本地题库",
+      material: "本地资料库",
+      material_ai: "资料库+AI",
+      free_search: "公共搜题",
+      ollama: "本地 AI",
+      ai_api: "AI API",
+    }[source] || source;
   }
 })();
 
