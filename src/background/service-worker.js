@@ -2,6 +2,8 @@
   "../lib/types.js",
   "../lib/matcher.js",
   "../lib/db.js",
+  "../lib/material-db.js",
+  "../lib/material-retriever.js",
   "../lib/websearch.js",
   "../lib/ollama.js",
   "../lib/deepseek.js"
@@ -9,7 +11,7 @@
 
 (function () {
   "use strict";
-  const { Types, DB, Matcher, WebSearch, Ollama, AiApi } = self.AutoAnswer;
+  const { Types, DB, Matcher, MaterialDB, MaterialRetriever, WebSearch, Ollama, AiApi } = self.AutoAnswer;
 
   let settings = {
     ollamaUrl: Types.DEFAULT_OLLAMA_URL,
@@ -59,25 +61,60 @@
       case Types.MSG_TYPE.RUN_DIAGNOSTIC:
         handleDiagnostic(sendResponse);
         return true;
+      case Types.MSG_TYPE.GET_MATERIAL_LIBRARY:
+        handleMaterialLibrary(sendResponse);
+        return true;
+      case Types.MSG_TYPE.MATERIAL_CREATE_FOLDER:
+        MaterialDB.createFolder(msg.name).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      case Types.MSG_TYPE.MATERIAL_ADD_FILE:
+        MaterialDB.addFileText(msg.folderId, msg.file, msg.text).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      case Types.MSG_TYPE.MATERIAL_SET_FOLDER_ENABLED:
+        MaterialDB.updateFolderEnabled(msg.folderId, msg.enabled).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      case Types.MSG_TYPE.MATERIAL_SET_FILE_ENABLED:
+        MaterialDB.updateFileEnabled(msg.fileId, msg.enabled).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      case Types.MSG_TYPE.MATERIAL_DELETE_FOLDER:
+        MaterialDB.deleteFolder(msg.folderId).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      case Types.MSG_TYPE.MATERIAL_DELETE_FILE:
+        MaterialDB.deleteFile(msg.fileId).then(() => handleMaterialLibrary(sendResponse)).catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
     }
   });
 
   async function handleDiagnostic(sendResponse) {
     try {
-      const [models, stats, aiTest] = await Promise.all([
+      const [models, stats, materialStats, aiTest] = await Promise.all([
         Ollama.listModels(settings.ollamaUrl).catch(() => null),
         DB.getStats().catch(() => null),
+        MaterialDB.getStats().catch(() => null),
         settings.aiApiKey ? AiApi.testConnection({ baseUrl: settings.aiApiUrl, apiKey: settings.aiApiKey, model: settings.aiApiModel }).catch(() => ({ ok: false, error: "测试异常" })) : Promise.resolve({ ok: false, error: "未配置" }),
       ]);
       sendResponse({
         aiApi: { configured: !!settings.aiApiKey, connected: aiTest.ok, error: aiTest.error },
         ollama: { running: models !== null, models: models ? models.length : 0 },
         freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl },
+        materials: materialStats || { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 },
         database: { available: stats !== null, totalCached: stats ? stats.totalCached : 0, totalMatches: stats ? stats.totalMatches : 0 },
       });
     } catch (err) {
       const aiErr = settings.aiApiKey ? "自检异常" : "未配置";
-      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, database: { available: false, totalCached: 0, totalMatches: 0 } });
+      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, materials: { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 } });
+    }
+  }
+
+  async function handleMaterialLibrary(sendResponse) {
+    try {
+      const [folders, stats] = await Promise.all([
+        MaterialDB.listFoldersWithFiles(),
+        MaterialDB.getStats(),
+      ]);
+      sendResponse({ ok: true, folders, stats });
+    } catch (err) {
+      sendResponse({ ok: false, error: err.message, folders: [], stats: { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 } });
     }
   }
 
@@ -103,6 +140,7 @@
     }
     const fuzzy = await DB.fuzzySearch(q.questionText);
     if (fuzzy) return { id: q.id, type: q.type, answer: fuzzy.answer, source: Types.ANSWER_SOURCE.CACHE, confidence: fuzzy.confidence };
+    const materialContext = await MaterialRetriever.retrieve(q.questionText, q.options).catch(() => []);
     if (settings.freeSearchEnabled) {
       const searchResult = await WebSearch.search(q.questionText, { baseUrl: settings.freeSearchUrl });
       if (searchResult.success) {
@@ -112,17 +150,17 @@
       console.log("[答题助手] 免费搜题未命中:", searchResult.error);
     }
     if (settings.ollamaUrl) {
-      const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options });
+      const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
       if (ollamaResult.success) {
         DB.addQuestion(q.questionText, ollamaResult.answer, q.options).catch(() => {});
-        return { id: q.id, type: q.type, answer: ollamaResult.answer, source: Types.ANSWER_SOURCE.OLLAMA, confidence: ollamaResult.confidence };
+        return { id: q.id, type: q.type, answer: ollamaResult.answer, source: materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, confidence: materialContext.length ? Math.min(0.92, ollamaResult.confidence + 0.08) : ollamaResult.confidence, materials: materialContext };
       }
     }
     if (settings.aiApiKey) {
-      const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options });
+      const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext });
       if (aiResult.success) {
         DB.addQuestion(q.questionText, aiResult.answer, q.options).catch(() => {});
-        return { id: q.id, type: q.type, answer: aiResult.answer, source: Types.ANSWER_SOURCE.AI_API, confidence: aiResult.confidence };
+        return { id: q.id, type: q.type, answer: aiResult.answer, source: materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, confidence: materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, materials: materialContext };
       }
         else {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);

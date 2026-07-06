@@ -9,12 +9,16 @@
       const apiKey = (opts && opts.apiKey) || "";
       const model = (opts && opts.model) || "deepseek-chat";
       const options = (opts && opts.options) || [];
+      const context = (opts && opts.context) || [];
 
       if (!apiKey && !baseUrl.match(/^https?:\/\/(localhost|127\.0\.0\.1|::1)/)) return { success: false, error: "No API key configured" };
 
       let prompt = questionText;
       if (options && options.length > 0 && !questionContainsOptions(questionText, options)) {
         prompt += "\n\n选项：\n" + options.map(formatOptionForPrompt).join("\n");
+      }
+      if (context && context.length > 0) {
+        prompt += "\n\n用户启用资料中检索到的参考片段：\n" + context.map(formatContextForPrompt).join("\n\n");
       }
 
       const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
@@ -29,7 +33,7 @@
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: "system", content: "你是一个答题助手。如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。" },
+              { role: "system", content: "你是一个答题助手。如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。如果提供了用户资料片段，请优先参考资料，但资料和题目冲突时以题目为准。" },
               { role: "user", content: prompt },
             ],
             temperature: 0.3,
@@ -97,6 +101,10 @@
     const text = String(option || "").trim();
     if (/^[A-Z]\s*[\.\)、]/i.test(text)) return text;
     return String.fromCharCode(65 + index) + ". " + text;
+  }
+
+  function formatContextForPrompt(item, index) {
+    return (index + 1) + ". [" + item.folderName + " / " + item.fileName + "]\n" + item.text;
   }
 })();
 

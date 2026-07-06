@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -8,11 +8,11 @@
 </head>
 <body>
   <div class="container">
-    <h1>⚙️ 自动答题助手</h1>
-    <p class="subtitle">配置推理引擎和数据管理</p>
+    <h1>自动答题助手</h1>
+    <p class="subtitle">配置推理引擎、资料库和本地数据</p>
 
     <section>
-      <h2>🖥️ 本地 AI 设置</h2>
+      <h2>本地 AI 设置</h2>
       <div class="field">
         <label for="ollamaUrl">地址</label>
         <input type="url" id="ollamaUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
@@ -20,14 +20,14 @@
       <div class="field">
         <label for="ollamaModel">模型</label>
         <input type="text" id="ollamaModel" value="qwen2.5:7b" placeholder="qwen2.5:7b">
-        <button id="refreshModels" class="btn-sm">🔄 刷新列表</button>
+        <button id="refreshModels" class="btn-sm">刷新列表</button>
       </div>
       <div id="ollamaStatus" class="status"></div>
     </section>
 
     <section>
-      <h2>🤖 AI API 设置（可选）</h2>
-      <p class="hint" style="margin-bottom:10px">支持任何 OpenAI 兼容的 API：DeepSeek、通义千问、SiliconFlow、Kimi 等</p>
+      <h2>AI API 设置（可选）</h2>
+      <p class="hint">支持任何 OpenAI 兼容 API：DeepSeek、通义千问、SiliconFlow、Kimi、LM Studio 等。</p>
       <div class="field">
         <label for="aiApiUrl">API 地址</label>
         <input type="url" id="aiApiUrl" value="https://api.deepseek.com/v1" placeholder="https://api.deepseek.com/v1">
@@ -40,14 +40,44 @@
         <label for="aiApiKey">API Key</label>
         <div class="key-row">
           <input type="password" id="aiApiKey" placeholder="sk-..." autocomplete="off">
-          <button id="toggleKey" class="btn-sm">👁️ 显示</button>
+          <button id="toggleKey" class="btn-sm">显示</button>
         </div>
-        <p class="hint">填入 API Key 后保存即可使用。密钥仅保存在浏览器本地。</p>
+        <p class="hint">密钥仅保存在浏览器扩展存储中。</p>
       </div>
     </section>
 
     <section>
-      <h2>🔎 免费搜题来源</h2>
+      <h2>本地资料库</h2>
+      <p class="hint source-note">
+        你可以创建课程文件夹，例如“微积分”“线性代数”，再把讲义、作业、笔记放进去。答题时只会检索已启用的文件夹和文件。
+      </p>
+
+      <div class="material-create">
+        <input type="text" id="folderName" placeholder="新文件夹名称，例如：微积分">
+        <button id="createFolder" class="btn-sm">创建文件夹</button>
+      </div>
+
+      <div class="field">
+        <label for="targetFolder">上传到文件夹</label>
+        <select id="targetFolder"></select>
+      </div>
+      <div class="field">
+        <input type="file" id="materialFiles" multiple>
+        <p class="hint">1.2.0 支持纯文本类文件：txt、md、json、csv、html、xml、js、py、java、cpp 等。PDF / Word 放到后续版本。</p>
+      </div>
+      <button id="uploadMaterials" class="btn-sm">上传资料</button>
+      <div id="materialStatus" class="status"></div>
+
+      <div class="material-stats">
+        <span id="materialFolderCount">0 个文件夹</span>
+        <span id="materialFileCount">0 个文件</span>
+        <span id="materialChunkCount">0 个片段</span>
+      </div>
+      <div id="materialLibrary" class="material-library"></div>
+    </section>
+
+    <section>
+      <h2>免费搜题来源</h2>
       <label class="checkbox-row" for="freeSearchEnabled">
         <span>
           <strong>启用全能搜题公开接口</strong>
@@ -59,13 +89,11 @@
         <label for="freeSearchUrl">接口地址</label>
         <input type="url" id="freeSearchUrl" value="https://study.jszkk.com/api/open/seek" placeholder="https://study.jszkk.com/api/open/seek">
       </div>
-      <p class="hint source-note">
-        默认关闭。开启后会调用全能搜题公开接口；返回结果会缓存到本地题库。请注意：公开题库数据来源由第三方提供，答案可能不完整或不准确。
-      </p>
+      <p class="hint source-note">默认关闭。公开题库由第三方提供，答案可能不完整或不准确。</p>
     </section>
 
     <section>
-      <h2>📚 题库管理</h2>
+      <h2>题库管理</h2>
       <div id="stats" class="stats">
         <div class="stat-item">
           <span class="stat-value" id="statCached">-</span>
@@ -80,29 +108,29 @@
           <span class="stat-label">命中参考</span>
         </div>
       </div>
-      <button id="clearCache" class="btn-danger">🗑️ 清空题库</button>
+      <button id="clearCache" class="btn-danger">清空题库</button>
     </section>
 
     <section>
-      <h2>📥 导入题库</h2>
-      <p class="hint" style="margin-bottom:10px">上传 JSON 文件批量导入题目。格式：<code>[{"question":"...","answer":"...","options":["..."]}]</code></p>
+      <h2>导入题库</h2>
+      <p class="hint">上传 JSON 文件批量导入题目。格式：<code>[{"question":"...","answer":"...","options":["..."]}]</code></p>
       <div class="field">
-        <input type="file" id="importFile" accept=".json" style="font-size:13px">
+        <input type="file" id="importFile" accept=".json">
       </div>
-      <button id="importBtn" class="btn-sm">📤 导入</button>
+      <button id="importBtn" class="btn-sm">导入</button>
       <div id="importStatus" class="status"></div>
     </section>
 
     <section>
-      <h2>🧾 数据来源说明</h2>
+      <h2>数据来源说明</h2>
       <p class="hint source-note">
-        本扩展按顺序尝试：本地题库 → 免费搜题接口（仅在开启后）→ 本地 AI → AI API（仅在配置 Key 后）。
-        本地题库保存在浏览器 IndexedDB 中；免费搜题接口和 AI API 会接收题目文本；本地 AI 地址指向本机时数据不离开设备。
+        本扩展按顺序尝试：本地题库 → 已启用本地资料库片段 → 免费搜题接口（仅在开启后）→ 本地 AI → AI API（仅在配置 Key 后）。
+        资料库文件只保存在本地浏览器 IndexedDB 中；只有启用云端 API 或免费搜题时，相关题目和片段才会发送到对应服务。
       </p>
     </section>
 
     <div class="actions">
-      <button id="saveBtn" class="btn-primary">💾 保存设置</button>
+      <button id="saveBtn" class="btn-primary">保存设置</button>
       <span id="saveMsg" class="save-msg"></span>
     </div>
 
@@ -112,18 +140,10 @@
   <script src="../lib/types.js"></script>
   <script src="../lib/matcher.js"></script>
   <script src="../lib/db.js"></script>
+  <script src="../lib/material-db.js"></script>
+  <script src="../lib/material-retriever.js"></script>
   <script src="../lib/ollama.js"></script>
   <script src="../lib/deepseek.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-

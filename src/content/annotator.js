@@ -18,6 +18,8 @@
         vertical-align: middle; white-space: nowrap; pointer-events: none;
       }
       .aa-badge--cache { background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; }
+      .aa-badge--material { background:#ecfdf3; color:#067647; border:1px solid #75e0a7; }
+      .aa-badge--material-ai { background:#f0f9ff; color:#026aa2; border:1px solid #7cd4fd; }
       .aa-badge--free-search { background:#dcfce7; color:#166534; border:1px solid #86efac; }
       .aa-badge--ollama { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
       .aa-badge--deepseek { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
@@ -49,6 +51,8 @@
   function sourceBadge(source, confidence, answerText) {
     const map = {
       cache: { cls: "aa-badge--cache", label: "💾" },
+      material: { cls: "aa-badge--material", label: "📚" },
+      material_ai: { cls: "aa-badge--material-ai", label: "📚+AI" },
       free_search: { cls: "aa-badge--free-search", label: "🔎" },
       ollama: { cls: "aa-badge--ollama", label: "💻" },
       ai_api: { cls: "aa-badge--deepseek", label: "🧠" },

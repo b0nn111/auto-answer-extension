@@ -26,17 +26,22 @@
       const baseUrl = (opts && opts.baseUrl) || "http://localhost:11434";
       const model = (opts && opts.model) || "qwen2.5:7b";
       const options = (opts && opts.options) || [];
+      const context = (opts && opts.context) || [];
 
       // Include options in prompt for better answer format
       let prompt =
         "你是一个答题助手。请回答下面的题目。\n" +
         "如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。\n" +
-        "如果是填空题或简答题，直接输出答案，不要解释。\n\n" +
+        "如果是填空题或简答题，直接输出答案，不要解释。\n" +
+        "如果提供了用户资料片段，请优先参考资料，但资料和题目冲突时以题目为准。\n\n" +
         "题目：" + questionText;
       if (options && options.length > 0) {
         if (!questionContainsOptions(questionText, options)) {
           prompt += "\n\n选项：\n" + options.map(formatOptionForPrompt).join("\n");
         }
+      }
+      if (context && context.length > 0) {
+        prompt += "\n\n用户启用资料中检索到的参考片段：\n" + context.map(formatContextForPrompt).join("\n\n");
       }
 
       try {
@@ -64,6 +69,10 @@
     const text = String(option || "").trim();
     if (/^[A-Z]\s*[\.\)、]/i.test(text)) return text;
     return String.fromCharCode(65 + index) + ". " + text;
+  }
+
+  function formatContextForPrompt(item, index) {
+    return (index + 1) + ". [" + item.folderName + " / " + item.fileName + "]\n" + item.text;
   }
 })();
 

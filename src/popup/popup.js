@@ -56,6 +56,7 @@ function updateToggleUI(enabled) {
   setStatus("diag-aiapi", "loading", "检测中...");
   setStatus("diag-localai", "loading", "检测中...");
   setStatus("diag-freesearch", "loading", "检测中...");
+  setStatus("diag-materials", "loading", "检测中...");
   setStatus("diag-db", "loading", "检测中...");
   setStatus("diag-ext", "loading", "检测中...");
 
@@ -85,6 +86,15 @@ function updateToggleUI(enabled) {
       setStatus("diag-freesearch", "warn", "未开启");
     }
 
+    const materials = result.materials || { enabledFiles: 0, files: 0, chunks: 0 };
+    if (materials.files > 0 && materials.enabledFiles > 0) {
+      setStatus("diag-materials", "ok", materials.enabledFiles + "/" + materials.files + " 文件 · " + materials.chunks + " 片段");
+    } else if (materials.files > 0) {
+      setStatus("diag-materials", "warn", "未启用文件");
+    } else {
+      setStatus("diag-materials", "warn", "未添加资料");
+    }
+
     // Database
     const db = result.database;
     if (db !== undefined) {
@@ -97,6 +107,7 @@ function updateToggleUI(enabled) {
     setStatus("diag-aiapi", "err", "通信失败");
     setStatus("diag-localai", "err", "通信失败");
     setStatus("diag-freesearch", "err", "通信失败");
+    setStatus("diag-materials", "err", "通信失败");
     setStatus("diag-db", "err", "通信失败");
     setStatus("diag-ext", "err", "Service Worker 未响应");
   }

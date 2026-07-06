@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "自动答题助手",
-  "version": "1.1.1",
-  "description": "自动检测网页题目，优先题库命中，可选免费搜题接口和 AI 辅助",
+  "version": "1.2.0",
+  "description": "自动识别网页题目，支持本地题库、资料库辅助、本地 AI、免费搜题和 OpenAI 兼容 API。",
   "permissions": ["storage"],
   "host_permissions": [
     "http://localhost:*/*",
@@ -18,6 +18,8 @@
       "src/lib/types.js",
       "src/lib/matcher.js",
       "src/lib/db.js",
+      "src/lib/material-db.js",
+      "src/lib/material-retriever.js",
       "src/content/annotator.js",
       "src/content/panel.js",
       "src/content/content-script.js"

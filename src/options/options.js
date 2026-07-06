@@ -6,6 +6,7 @@
 
   let importFileData = null;
   let keyVisible = false;
+  let materialState = { folders: [], stats: null };
 
   async function loadSettings() {
     const stored = await chrome.storage.sync.get([
@@ -109,6 +110,162 @@
     showSaveMessage("题库已清空");
   }
 
+  async function loadMaterials() {
+    const response = await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.GET_MATERIAL_LIBRARY });
+    if (!response || !response.ok) {
+      $("materialStatus").textContent = response?.error || "资料库读取失败";
+      $("materialStatus").className = "status err";
+      return;
+    }
+    materialState = response;
+    renderMaterials();
+  }
+
+  function renderMaterials() {
+    const folders = materialState.folders || [];
+    const stats = materialState.stats || { folders: 0, files: 0, chunks: 0 };
+    $("materialFolderCount").textContent = stats.enabledFolders + "/" + stats.folders + " 个文件夹启用";
+    $("materialFileCount").textContent = stats.enabledFiles + "/" + stats.files + " 个文件启用";
+    $("materialChunkCount").textContent = stats.chunks + " 个片段";
+
+    const target = $("targetFolder");
+    target.innerHTML = folders.length
+      ? folders.map((folder) => '<option value="' + escapeAttr(folder.id) + '">' + escapeHtml(folder.name) + "</option>").join("")
+      : '<option value="">请先创建文件夹</option>';
+
+    const library = $("materialLibrary");
+    if (!folders.length) {
+      library.innerHTML = '<div class="empty">还没有资料文件夹。先创建一个课程文件夹。</div>';
+      return;
+    }
+
+    library.innerHTML = folders.map(renderFolder).join("");
+    bindMaterialActions();
+  }
+
+  function renderFolder(folder) {
+    const files = folder.files || [];
+    return [
+      '<div class="material-folder" data-folder-id="' + escapeAttr(folder.id) + '">',
+      '  <div class="material-folder-head">',
+      '    <label class="inline-check"><input type="checkbox" data-action="toggle-folder" ' + (folder.enabled ? "checked" : "") + "> <strong>" + escapeHtml(folder.name) + "</strong></label>",
+      '    <button class="link-danger" data-action="delete-folder">删除文件夹</button>',
+      "  </div>",
+      files.length ? files.map(renderFile).join("") : '<div class="empty small">这个文件夹还没有文件。</div>',
+      "</div>",
+    ].join("");
+  }
+
+  function renderFile(file) {
+    return [
+      '<div class="material-file" data-file-id="' + escapeAttr(file.id) + '">',
+      '  <label class="inline-check"><input type="checkbox" data-action="toggle-file" ' + (file.enabled ? "checked" : "") + "> " + escapeHtml(file.name) + "</label>",
+      '  <span class="file-meta">' + file.chunkCount + " 片段 · " + formatSize(file.size) + "</span>",
+      '  <button class="link-danger" data-action="delete-file">删除</button>',
+      "</div>",
+    ].join("");
+  }
+
+  function bindMaterialActions() {
+    document.querySelectorAll("[data-action='toggle-folder']").forEach((input) => {
+      input.addEventListener("change", async (event) => {
+        const folderId = event.target.closest(".material-folder").dataset.folderId;
+        await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_SET_FOLDER_ENABLED, folderId, enabled: event.target.checked });
+        await loadMaterials();
+      });
+    });
+    document.querySelectorAll("[data-action='toggle-file']").forEach((input) => {
+      input.addEventListener("change", async (event) => {
+        const fileId = event.target.closest(".material-file").dataset.fileId;
+        await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_SET_FILE_ENABLED, fileId, enabled: event.target.checked });
+        await loadMaterials();
+      });
+    });
+    document.querySelectorAll("[data-action='delete-folder']").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        const folder = event.target.closest(".material-folder");
+        if (!confirm("确定删除这个资料文件夹及其中所有文件吗？")) return;
+        await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_DELETE_FOLDER, folderId: folder.dataset.folderId });
+        await loadMaterials();
+      });
+    });
+    document.querySelectorAll("[data-action='delete-file']").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        const file = event.target.closest(".material-file");
+        if (!confirm("确定删除这个资料文件吗？")) return;
+        await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_DELETE_FILE, fileId: file.dataset.fileId });
+        await loadMaterials();
+      });
+    });
+  }
+
+  async function createFolder() {
+    const name = $("folderName").value.trim();
+    if (!name) {
+      showMaterialStatus("请先填写文件夹名称", "err");
+      return;
+    }
+    const response = await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_CREATE_FOLDER, name });
+    if (!response || !response.ok) {
+      showMaterialStatus(response?.error || "创建失败", "err");
+      return;
+    }
+    $("folderName").value = "";
+    showMaterialStatus("文件夹已创建", "ok");
+    materialState = response;
+    renderMaterials();
+  }
+
+  async function uploadMaterials() {
+    const folderId = $("targetFolder").value;
+    const files = Array.from($("materialFiles").files || []);
+    if (!folderId) {
+      showMaterialStatus("请先选择或创建文件夹", "err");
+      return;
+    }
+    if (!files.length) {
+      showMaterialStatus("请先选择文件", "err");
+      return;
+    }
+
+    let success = 0;
+    let skipped = 0;
+    for (const file of files) {
+      const text = await readSupportedTextFile(file).catch(() => "");
+      if (!text.trim()) {
+        skipped++;
+        continue;
+      }
+      const response = await chrome.runtime.sendMessage({
+        type: Types.MSG_TYPE.MATERIAL_ADD_FILE,
+        folderId,
+        file: { name: file.name, type: file.type, size: file.size },
+        text,
+      });
+      if (response && response.ok) success++;
+      else skipped++;
+    }
+
+    $("materialFiles").value = "";
+    showMaterialStatus("上传完成：成功 " + success + " 个，跳过 " + skipped + " 个", success ? "ok" : "err");
+    await loadMaterials();
+  }
+
+  function readSupportedTextFile(file) {
+    const name = file.name.toLowerCase();
+    const supported = /\.(txt|md|markdown|json|csv|tsv|html|htm|xml|js|ts|jsx|tsx|py|java|c|cpp|h|hpp|cs|go|rs|php|rb|sql|yaml|yml|ini|log)$/i.test(name) ||
+      /^text\//.test(file.type) ||
+      file.type === "application/json" ||
+      file.type === "application/xml";
+    if (!supported) return Promise.resolve("");
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => resolve(String(event.target.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("File read failed"));
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
   function handleImportFileChange(e) {
     const file = e.target.files[0];
     if (!file) {
@@ -188,9 +345,30 @@
     setTimeout(() => msg.classList.remove("visible"), 2000);
   }
 
+  function showMaterialStatus(text, cls) {
+    $("materialStatus").textContent = text;
+    $("materialStatus").className = "status " + cls;
+  }
+
+  function escapeHtml(text) {
+    return String(text || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
+
+  function escapeAttr(text) {
+    return escapeHtml(text).replace(/`/g, "&#96;");
+  }
+
+  function formatSize(size) {
+    const bytes = Number(size || 0);
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(1) + " MB";
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     loadSettings().catch(() => {});
     loadStats().catch(() => {});
+    loadMaterials().catch(() => {});
 
     $("saveBtn").addEventListener("click", saveSettings);
     $("refreshModels").addEventListener("click", refreshModels);
@@ -198,5 +376,7 @@
     $("toggleKey").addEventListener("click", toggleKeyVisibility);
     $("importFile").addEventListener("change", handleImportFileChange);
     $("importBtn").addEventListener("click", importQuestionBank);
+    $("createFolder").addEventListener("click", createFolder);
+    $("uploadMaterials").addEventListener("click", uploadMaterials);
   });
 })();

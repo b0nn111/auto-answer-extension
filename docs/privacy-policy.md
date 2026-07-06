@@ -1,6 +1,6 @@
 # Privacy Policy for 自动答题助手 (Auto Answer Helper)
 
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-06
 
 ## Data Collection
 
@@ -9,28 +9,32 @@ This extension may process the following data from quiz or question pages:
 - Question text detected on web pages
 - Answer options detected on web pages
 - Page URL where questions are detected
+- User-uploaded local study materials, if the user uploads files in the settings page
 
 ## How Data Is Used
 
 The data is used only to provide the extension's answer-assistance features:
 
 1. **Local question bank**: question-answer pairs are stored locally in the browser's IndexedDB.
-2. **Free question-search source**: if the user enables the free search option, question text is sent to the configured public search endpoint.
-3. **Local AI**: if the user configures a local AI service, question text is sent to that configured local endpoint.
-4. **AI API**: if the user configures an API key and endpoint, question text is sent to that configured AI API.
+2. **Local material library**: uploaded study materials are stored locally and searched only when their folder or file is enabled.
+3. **Free question-search source**: if the user enables the free search option, question text is sent to the configured public search endpoint.
+4. **Local AI**: if the user configures a local AI service, question text and enabled material snippets may be sent to that configured local endpoint.
+5. **AI API**: if the user configures an API key and endpoint, question text and enabled material snippets may be sent to that configured AI API.
 
 ## Data Storage
 
 - Local question-answer pairs are stored in browser IndexedDB.
-- The local database limit is 10,000 entries.
+- User-uploaded material folders, files, and text chunks are stored in browser IndexedDB.
+- The local question-bank limit is 10,000 entries.
 - Users can clear the local question bank from the settings page.
+- Users can delete local material folders and files from the settings page.
 - API keys are stored in browser extension storage.
 
 ## Third-Party Data Sharing
 
 This extension does not use analytics or tracking services.
 
-Question text may be sent to third-party services only when the user explicitly enables or configures them:
+Question text may be sent to third-party services only when the user explicitly enables or configures them. If the user enables cloud AI, relevant enabled material snippets may also be sent as context:
 
 - Free question-search endpoint, disabled by default
 - User-configured cloud AI API
@@ -45,13 +49,14 @@ Users can disable this feature or change the endpoint in the settings page.
 
 - Enable or disable the extension from the popup.
 - Enable or disable the free question-search source from the settings page.
+- Create, enable, disable, or delete local material folders and files from the settings page.
 - Configure or remove local AI and AI API settings.
 - Clear all local question-bank data from the settings page.
 - Uninstalling the extension removes local extension data.
 
 ## Accuracy Notice
 
-Answers from local cache, public question-search sources, local AI, or AI APIs may be incomplete or incorrect. Users should verify results independently.
+Answers from local cache, uploaded materials, public question-search sources, local AI, or AI APIs may be incomplete or incorrect. Users should verify results independently.
 
 ## Contact
 
