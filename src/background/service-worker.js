@@ -122,7 +122,7 @@
     try {
       // Process all questions in parallel (with timeout)
       const pool = questions.map(q =>
-        processQuestion(q).catch(() => ({ id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 }))
+        processQuestion(q).catch(() => ({ id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0, error: "处理异常" }))
       );
       const results = await Promise.all(pool);
       sendResponse(results);
@@ -148,6 +148,16 @@
         return { id: q.id, type: q.type, answer: searchResult.answer, source: Types.ANSWER_SOURCE.FREE_SEARCH, confidence: searchResult.confidence };
       }
       console.log("[答题助手] 免费搜题未命中:", searchResult.error);
+      if (!settings.aiApiKey && !(await Ollama.checkRunning(settings.ollamaUrl).catch(() => false))) {
+        return {
+          id: q.id,
+          type: q.type,
+          answer: "",
+          source: Types.ANSWER_SOURCE.FAILED,
+          confidence: 0,
+          error: searchResult.error || "公开接口未命中",
+        };
+      }
     }
     if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });

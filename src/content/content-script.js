@@ -18,9 +18,10 @@
     try {
       chrome.storage.sync.get(["extensionEnabled"], (s) => {
         isActive = s.extensionEnabled === true;
+        Panel.setActive(isActive);
         if (isActive) {
           // Only schedule scan if enabled
-          setTimeout(scheduleScan, 2000);
+          setTimeout(() => scheduleScan(true), 2000);
         }
       });
     } catch (_) {}
@@ -50,13 +51,21 @@
       }
       if (msg.type === Types.MSG_TYPE.PANEL_TOGGLE) {
         isActive = msg.active;
-        if (isActive) scheduleScan();
+        Panel.setActive(isActive);
+        if (isActive) scheduleScan(true);
       }
       if (msg.type === "RETRY_SCAN") {
-        scanFailCount = 0;
-        scheduleScan();
+        retryScan();
       }
     });
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "sync" || !changes.extensionEnabled) return;
+        isActive = changes.extensionEnabled.newValue === true;
+        Panel.setActive(isActive);
+        if (isActive) retryScan();
+      });
+    } catch (_) {}
     // Also try Chrome"s built-in AI
     tryDetectChromeAI();
   }
@@ -70,10 +79,10 @@
     } catch (_) {}
     root.AutoAnswer.hasChromeAI = hasBuiltin;
   }
-  function scheduleScan() {
+  function scheduleScan(force) {
     clearTimeout(scanTimer);
     const now = Date.now();
-    if (now - lastScanTime < MIN_SCAN_INTERVAL) return;
+    if (!force && now - lastScanTime < MIN_SCAN_INTERVAL) return;
     scanTimer = setTimeout(detectAndSend, 500);
   }
   // ── Detection: targeted only, no broad selectors ──
@@ -326,7 +335,7 @@
       const el = elementMap.get(r.id);
       if (!el) return;
       if (r.source === Types.ANSWER_SOURCE.FAILED) {
-        Annotator.markFailed(el);
+        Annotator.markFailed(el, r);
         failCount++;
         return;
       }
@@ -350,12 +359,34 @@
   }
   // ── Public API ──
   root.AutoAnswer.content = root.AutoAnswer.content || {};
-  root.AutoAnswer.content.toggle = (active) => { isActive = active; if (active) scheduleScan(); };
-  root.AutoAnswer.content.retry = () => { scanFailCount = 0; scheduleScan(); };
+  root.AutoAnswer.content.toggle = (active) => {
+    isActive = active === true;
+    Panel.setActive(isActive);
+    try { chrome.storage.sync.set({ extensionEnabled: isActive }); } catch (_) {}
+    if (isActive) retryScan();
+  };
+  root.AutoAnswer.content.retry = retryScan;
   root.AutoAnswer.content.getStats = () => ({
     detected: elementMap.size,
     answered: document.querySelectorAll(".aa-badge").length,
   });
+
+  function retryScan() {
+    scanFailCount = 0;
+    lastScanTime = 0;
+    questionCounter = 0;
+    elementMap.clear();
+    detectedTexts.clear();
+    clearAnnotations();
+    scheduleScan(true);
+  }
+
+  function clearAnnotations() {
+    document.querySelectorAll(".aa-badge, .aa-answer-toggle, .aa-answer-body, .aa-ghost-hint")
+      .forEach((el) => el.remove());
+    document.querySelectorAll(".aa-highlight-option")
+      .forEach((el) => el.classList.remove("aa-highlight-option"));
+  }
   // ── Start ──
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

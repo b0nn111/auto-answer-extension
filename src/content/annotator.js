@@ -213,9 +213,21 @@
     container.appendChild(body);
   }
 
-  function markFailed(container) {
+  function markFailed(container, result) {
     injectStyles();
-    container.insertAdjacentHTML("beforeend", '<span class="aa-badge aa-badge--failed">❌ 无法解答</span>');
+    const reason = formatFailedReason(result);
+    container.insertAdjacentHTML("beforeend", '<span class="aa-badge aa-badge--failed">❌ ' + escapeHtml(reason) + "</span>");
+  }
+
+  function formatFailedReason(result) {
+    const error = String(result?.error || "").trim();
+    if (error.includes("公开接口") || error.includes("免费搜题")) return error;
+    if (result?.sourceName) return result.sourceName + "未命中";
+    return "无法解答";
+  }
+
+  function escapeHtml(text) {
+    return String(text || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
   function jaccardSimple(a, b) {

@@ -32,12 +32,21 @@
   });
   document.getElementById("rerun-btn").addEventListener("click", runDiagnostics);
   document.getElementById("scan-now-btn").addEventListener("click", async () => {
+    await chrome.storage.sync.set({ extensionEnabled: true });
+    updateToggleUI(true);
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id) {
       chrome.tabs.sendMessage(tabs[0].id, { type: "PANEL_TOGGLE", active: true }).catch(() => {});
       chrome.tabs.sendMessage(tabs[0].id, { type: "RETRY_SCAN" }).catch(() => {});
     }
     window.close();
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync" || !changes.extensionEnabled) return;
+    const enabled = changes.extensionEnabled.newValue === true;
+    document.getElementById("master-toggle").checked = enabled;
+    updateToggleUI(enabled);
   });
 });
 

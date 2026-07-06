@@ -6,6 +6,7 @@
 
   let panelEl = null;
   let statsEl = null;
+  let toggleBtnEl = null;
   let isPanelActive = false;
 
   function create(getIsActive) {
@@ -55,12 +56,11 @@
     document.body.appendChild(panelEl);
     statsEl = panelEl.querySelector("#aa-stats");
 
-    const toggleBtn = panelEl.querySelector("#aa-toggle-btn");
-    toggleBtn.addEventListener("click", () => {
-      isPanelActive = !isPanelActive;
-      toggleBtn.style.background = isPanelActive ? "#22c55e" : "#d1d5db";
-      toggleBtn.querySelector("span").style.transform = isPanelActive
-        ? "translateX(0)" : "translateX(16px)";
+    toggleBtnEl = panelEl.querySelector("#aa-toggle-btn");
+    setActive(getIsActive ? getIsActive() : false);
+    toggleBtnEl.addEventListener("click", () => {
+      const nextActive = !isPanelActive;
+      setActive(nextActive);
       if (getIsActive) {
         const cs = root.AutoAnswer.content;
         if (cs && cs.toggle) cs.toggle(isPanelActive);
@@ -146,6 +146,14 @@
     statsEl.textContent = `识别 ${stats.total} 题 · ✅ ${answered} 题 · ❌ ${stats.failCount} 题`;
   }
 
+  function setActive(active) {
+    isPanelActive = active === true;
+    if (!toggleBtnEl) return;
+    toggleBtnEl.style.background = isPanelActive ? "#22c55e" : "#d1d5db";
+    const knob = toggleBtnEl.querySelector("span");
+    if (knob) knob.style.transform = isPanelActive ? "translateX(0)" : "translateX(16px)";
+  }
+
   function makeDraggable(el) {
     let dragging = false, sx, sy, ox, oy;
     el.addEventListener("mousedown", (e) => {
@@ -163,6 +171,6 @@
     document.addEventListener("mouseup", () => { dragging = false; el.style.cursor = "move"; });
   }
 
-  root.AutoAnswer.Panel = { create, updateStats, setStatus };
+  root.AutoAnswer.Panel = { create, updateStats, setStatus, setActive };
 })();
 
