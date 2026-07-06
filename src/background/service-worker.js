@@ -142,14 +142,14 @@
     if (fuzzy) return { id: q.id, type: q.type, answer: fuzzy.answer, source: Types.ANSWER_SOURCE.CACHE, confidence: fuzzy.confidence };
     const materialContext = await MaterialRetriever.retrieve(q.questionText, q.options).catch(() => []);
     if (settings.freeSearchEnabled) {
-      const searchResult = await WebSearch.search(q.questionText, { baseUrl: settings.freeSearchUrl });
+      const searchResult = await WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options });
       if (searchResult.success) {
         DB.addQuestion(q.questionText, searchResult.answer, q.options).catch(() => {});
         return { id: q.id, type: q.type, answer: searchResult.answer, source: Types.ANSWER_SOURCE.FREE_SEARCH, confidence: searchResult.confidence };
       }
       console.log("[答题助手] 免费搜题未命中:", searchResult.error);
     }
-    if (settings.ollamaUrl) {
+    if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
       if (ollamaResult.success) {
         DB.addQuestion(q.questionText, ollamaResult.answer, q.options).catch(() => {});
