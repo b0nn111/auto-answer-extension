@@ -1,7 +1,7 @@
 ﻿(function () {
   "use strict";
   const root = typeof self !== "undefined" ? self : window;
-  const { Types, Matcher, Annotator, Panel } = root.AutoAnswer;
+  const { Types, Matcher, Annotator } = root.AutoAnswer;
   // ── State ──
   let isActive = false;
   let questionCounter = 0;
@@ -13,12 +13,11 @@
   const detectedTexts = new Set();
   // ── Init ──
   function init() {
-    Panel.create(() => isActive);
+    removePanel();
     // Read toggle state from storage
     try {
       chrome.storage.sync.get(["extensionEnabled"], (s) => {
         isActive = s.extensionEnabled === true;
-        Panel.setActive(isActive);
         if (isActive) {
           // Only schedule scan if enabled
           setTimeout(() => scheduleScan(true), 2000);
@@ -51,7 +50,6 @@
       }
       if (msg.type === Types.MSG_TYPE.PANEL_TOGGLE) {
         isActive = msg.active;
-        Panel.setActive(isActive);
         if (isActive) scheduleScan(true);
       }
       if (msg.type === "RETRY_SCAN") {
@@ -62,7 +60,6 @@
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== "sync" || !changes.extensionEnabled) return;
         isActive = changes.extensionEnabled.newValue === true;
-        Panel.setActive(isActive);
         if (isActive) retryScan();
       });
     } catch (_) {}
@@ -93,15 +90,11 @@
     if (questions.length === 0) {
       scanFailCount++;
       if (scanFailCount <= 2) {
-        Panel.setStatus("waiting");
         setTimeout(scheduleScan, 3000);
-      } else {
-        Panel.setStatus("empty");
       }
       return;
     }
     scanFailCount = 0;
-    Panel.setStatus("sending", questions.length);
     // Debug: print detected questions to console
     console.log("[答题助手] 检测到 " + questions.length + " 道题:", questions.map(q => ({ id: q.id, text: q.questionText.slice(0, 120), type: q.type, options: q.options })));
     try {
@@ -109,14 +102,12 @@
         { type: Types.MSG_TYPE.DETECT_QUESTIONS, questions },
         (answers) => {
           if (chrome.runtime.lastError) {
-            Panel.setStatus("error");
             return;
           }
           if (answers && answers.length) handleAnswers(answers);
         }
       );
     } catch (_) {
-      Panel.setStatus("error");
     }
   }
   function detectQuestions() {
@@ -334,6 +325,11 @@
     results.forEach((r) => {
       const el = elementMap.get(r.id);
       if (!el) return;
+      if (r.displayAsText) {
+        Annotator.annotateText(el, r);
+        shortCount++;
+        return;
+      }
       if (r.source === Types.ANSWER_SOURCE.FAILED) {
         Annotator.markFailed(el, r);
         failCount++;
@@ -361,7 +357,6 @@
   root.AutoAnswer.content = root.AutoAnswer.content || {};
   root.AutoAnswer.content.toggle = (active) => {
     isActive = active === true;
-    Panel.setActive(isActive);
     try { chrome.storage.sync.set({ extensionEnabled: isActive }); } catch (_) {}
     if (isActive) retryScan();
   };
@@ -386,6 +381,11 @@
       .forEach((el) => el.remove());
     document.querySelectorAll(".aa-highlight-option")
       .forEach((el) => el.classList.remove("aa-highlight-option"));
+  }
+
+  function removePanel() {
+    const panel = document.getElementById("aa-panel");
+    if (panel) panel.remove();
   }
   // ── Start ──
   if (document.readyState === "loading") {

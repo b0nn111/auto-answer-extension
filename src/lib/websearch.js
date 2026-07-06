@@ -32,10 +32,15 @@
           const validated = validateAnswer(answer, choices);
           if (!validated.ok) {
             return {
-              success: false,
-              error: validated.error || "公开接口答案与选项不匹配",
+              success: true,
+              answer,
+              confidence: 0.45,
+              sourceName: "全能搜题",
+              displayAsText: true,
+              warning: validated.error || "公开接口答案与选项不匹配",
+              query,
+              content: item && item.content,
               raw: item,
-              untrustedAnswer: answer,
             };
           }
           return {

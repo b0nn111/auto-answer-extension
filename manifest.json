@@ -21,7 +21,6 @@
       "src/lib/material-db.js",
       "src/lib/material-retriever.js",
       "src/content/annotator.js",
-      "src/content/panel.js",
       "src/content/content-script.js"
     ],
     "run_at": "document_idle"
