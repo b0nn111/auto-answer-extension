@@ -61,7 +61,7 @@
       const hasRadio = element.querySelector('input[type="radio"]') !== null;
       const hasCheckbox = element.querySelector('input[type="checkbox"]') !== null;
       const hasTextInput =
-        element.querySelector('input[type="text"]') !== null ||
+        element.querySelector('input[type="text"], input[type="number"]') !== null ||
         element.querySelector("textarea") !== null;
 
       const signals = {

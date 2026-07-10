@@ -81,7 +81,7 @@
       <label class="checkbox-row" for="freeSearchEnabled">
         <span>
           <strong>启用全能搜题公开接口</strong>
-          <em>未命中本地题库时，将题目文本发送到该公开接口查询。</em>
+          <em>开启后会将题目文本发送到该公开接口，并与其他来源答案一起比较。</em>
         </span>
         <input type="checkbox" id="freeSearchEnabled">
       </label>
@@ -97,7 +97,7 @@
       <div id="stats" class="stats">
         <div class="stat-item">
           <span class="stat-value" id="statCached">-</span>
-          <span class="stat-label">已缓存题目</span>
+          <span class="stat-label">已导入题目</span>
         </div>
         <div class="stat-item">
           <span class="stat-value" id="statMatched">-</span>
@@ -124,7 +124,7 @@
     <section>
       <h2>数据来源说明</h2>
       <p class="hint source-note">
-        本扩展按顺序尝试：本地题库 → 已启用本地资料库片段 → 免费搜题接口（仅在开启后）→ 本地 AI → AI API（仅在配置 Key 后）。
+        本扩展会收集本地题库、免费搜题、本地 AI 和 AI API 的可用答案，按匹配度与置信度排序；已启用资料片段会作为 AI 的参考上下文。
         资料库文件只保存在本地浏览器 IndexedDB 中；只有启用云端 API 或免费搜题时，相关题目和片段才会发送到对应服务。
       </p>
     </section>

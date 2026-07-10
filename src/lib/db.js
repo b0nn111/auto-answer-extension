@@ -93,7 +93,7 @@
 
       if (best) {
         best.confidence = Math.min(1, best.confidence * (0.5 + bestScore * 0.5));
-        this._incrementHit(best.questionHash, best);
+        await this._incrementHit(best.questionHash, best);
       }
       return best;
     },

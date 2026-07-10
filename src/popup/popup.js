@@ -15,10 +15,7 @@
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { type: "PANEL_TOGGLE", active: enabled }).catch(() => {});
-        if (enabled) {
-          chrome.tabs.sendMessage(tab.id, { type: "RETRY_SCAN" }).catch(() => {});
-        }
+        chrome.tabs.sendMessage(tab.id, { type: "EXTENSION_TOGGLE", active: enabled }).catch(() => {});
       }
     }
     if (!enabled) window.close();
@@ -36,7 +33,7 @@
     updateToggleUI(true);
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id) {
-      chrome.tabs.sendMessage(tabs[0].id, { type: "PANEL_TOGGLE", active: true }).catch(() => {});
+      chrome.tabs.sendMessage(tabs[0].id, { type: "EXTENSION_TOGGLE", active: true }).catch(() => {});
       chrome.tabs.sendMessage(tabs[0].id, { type: "RETRY_SCAN" }).catch(() => {});
     }
     window.close();
@@ -61,7 +58,7 @@ function updateToggleUI(enabled) {
   }
 }
 
-    async function runDiagnostics() {
+async function runDiagnostics() {
   setStatus("diag-aiapi", "loading", "检测中...");
   setStatus("diag-localai", "loading", "检测中...");
   setStatus("diag-freesearch", "loading", "检测中...");
@@ -90,14 +87,17 @@ function updateToggleUI(enabled) {
     }
 
     if (result.freeSearch?.enabled) {
-      setStatus("diag-freesearch", "ok", "已开启");
+      const url = result.freeSearch.url || "";
+      const host = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+      setStatus("diag-freesearch", "ok", "已开启" + (host ? " · " + host : ""));
     } else {
       setStatus("diag-freesearch", "warn", "未开启");
     }
 
     const materials = result.materials || { enabledFiles: 0, files: 0, chunks: 0 };
     if (materials.files > 0 && materials.enabledFiles > 0) {
-      setStatus("diag-materials", "ok", materials.enabledFiles + "/" + materials.files + " 文件 · " + materials.chunks + " 片段");
+      const enabledChunks = materials.enabledChunks ?? materials.chunks;
+      setStatus("diag-materials", "ok", materials.enabledFiles + "/" + materials.files + " 文件 · " + enabledChunks + " 片段");
     } else if (materials.files > 0) {
       setStatus("diag-materials", "warn", "未启用文件");
     } else {
@@ -106,7 +106,7 @@ function updateToggleUI(enabled) {
 
     // Database
     const db = result.database;
-    if (db !== undefined) {
+    if (db?.available) {
       setStatus("diag-db", "ok", db.totalCached + " 题 · 命中 " + (db.totalMatches || 0) + " 次");
     } else {
       setStatus("diag-db", "err", "不可用");

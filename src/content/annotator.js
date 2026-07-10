@@ -75,7 +75,7 @@
       ai_api: { cls: "aa-badge--deepseek", label: "🧠" },
     };
     const m = map[source] || map.ollama;
-    const answer = formatAnswerForBadge(answerText);
+    const answer = escapeHtml(formatAnswerForBadge(answerText));
     const pct = confidence ? " " + (confidence * 100).toFixed(0) + "%" : "";
     return '<span class="aa-badge ' + m.cls + '">✅' + answer + pct + " " + m.label + "</span>";
   }
@@ -129,15 +129,8 @@
       badgeTarget.insertAdjacentHTML("beforeend", badge);
       appendCandidateToggle(container, result);
     } else {
-      // Fallback: find the first option-like child and append after it
-      const firstOpt = candidates[0]?.element || container.querySelector("label, .option, li, input[type=radio], input[type=checkbox]");
-      if (firstOpt) {
-        // Insert badge after the first option's parent
-        const parent = firstOpt.closest("label, div, li") || firstOpt;
-        parent.insertAdjacentHTML("beforeend", badge);
-      } else {
-        container.insertAdjacentHTML("beforeend", badge);
-      }
+      // Keep an unmatched answer at question level so it cannot imply the first option is correct.
+      container.insertAdjacentHTML("beforeend", badge);
       appendCandidateToggle(container, result);
     }
   }
@@ -205,7 +198,7 @@
 
   function annotateFill(container, result) {
     injectStyles();
-    const inputs = container.querySelectorAll("input[type=text], textarea");
+    const inputs = container.querySelectorAll('input[type="text"], input[type="number"], textarea');
     if (inputs.length === 0) {
       annotateText(container, result);
       return;

@@ -12,6 +12,10 @@ Thumbs.db
 # Codex sandbox
 .superpowers/
 
+# Local code indexes
+.codegraph/
+.understand-anything/
+
 # Test files
 work/
 

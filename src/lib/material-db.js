@@ -184,12 +184,17 @@
       const folders = await getAll(FOLDER_STORE);
       const files = await getAll(FILE_STORE);
       const chunks = await getAll(CHUNK_STORE);
+      const enabledFolderIds = new Set(folders.filter((folder) => folder.enabled).map((folder) => folder.id));
+      const enabledFileIds = new Set(files
+        .filter((file) => file.enabled && enabledFolderIds.has(file.folderId))
+        .map((file) => file.id));
       return {
         folders: folders.length,
-        enabledFolders: folders.filter((folder) => folder.enabled).length,
+        enabledFolders: enabledFolderIds.size,
         files: files.length,
-        enabledFiles: files.filter((file) => file.enabled).length,
+        enabledFiles: enabledFileIds.size,
         chunks: chunks.length,
+        enabledChunks: chunks.filter((chunk) => enabledFileIds.has(chunk.fileId)).length,
       };
     },
   };

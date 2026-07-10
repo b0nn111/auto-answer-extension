@@ -15,7 +15,7 @@ This extension may process the following data from quiz or question pages:
 
 The data is used only to provide the extension's answer-assistance features:
 
-1. **Local question bank**: question-answer pairs are stored locally in the browser's IndexedDB.
+1. **Local question bank**: only question-answer pairs manually imported by the user are stored in the browser's IndexedDB. Answered page questions are not saved automatically.
 2. **Local material library**: uploaded study materials are stored locally and searched only when their folder or file is enabled.
 3. **Free question-search source**: if the user enables the free search option, question text is sent to the configured public search endpoint.
 4. **Local AI**: if the user configures a local AI service, question text and enabled material snippets may be sent to that configured local endpoint.
@@ -23,7 +23,7 @@ The data is used only to provide the extension's answer-assistance features:
 
 ## Data Storage
 
-- Local question-answer pairs are stored in browser IndexedDB.
+- Question-answer pairs manually imported by the user are stored in browser IndexedDB; answered page questions are not archived automatically.
 - User-uploaded material folders, files, and text chunks are stored in browser IndexedDB.
 - The local question-bank limit is 10,000 entries.
 - Users can clear the local question bank from the settings page.

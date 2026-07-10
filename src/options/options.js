@@ -126,7 +126,8 @@
     const stats = materialState.stats || { folders: 0, files: 0, chunks: 0 };
     $("materialFolderCount").textContent = stats.enabledFolders + "/" + stats.folders + " 个文件夹启用";
     $("materialFileCount").textContent = stats.enabledFiles + "/" + stats.files + " 个文件启用";
-    $("materialChunkCount").textContent = stats.chunks + " 个片段";
+    const enabledChunks = stats.enabledChunks ?? stats.chunks;
+    $("materialChunkCount").textContent = enabledChunks + "/" + stats.chunks + " 个片段启用";
 
     const target = $("targetFolder");
     target.innerHTML = folders.length

@@ -13,19 +13,12 @@
   const detectedTexts = new Set();
   // ── Init ──
   function init() {
-    removePanel();
     // Read toggle state from storage
     try {
       chrome.storage.sync.get(["extensionEnabled"], (s) => {
-        isActive = s.extensionEnabled === true;
-        if (isActive) {
-          // Only schedule scan if enabled
-          setTimeout(() => scheduleScan(true), 2000);
-        }
+        setActive(s.extensionEnabled === true, true);
       });
     } catch (_) {}
-    root.AutoAnswer.content = root.AutoAnswer.content || {};
-    root.AutoAnswer.content.retry = scheduleScan;
     // Watch DOM changes, but VERY conservatively
     // Only look for added nodes with question-like class names
     const observer = new MutationObserver((mutations) => {
@@ -45,22 +38,17 @@
     observer.observe(document.body, { childList: true, subtree: true });
     // Listen for messages from background
     chrome.runtime.onMessage.addListener((msg) => {
-      if (msg.type === Types.MSG_TYPE.ANSWERS_RESULT) {
-        handleAnswers(msg.answers);
-      }
-      if (msg.type === Types.MSG_TYPE.PANEL_TOGGLE) {
-        isActive = msg.active;
-        if (isActive) scheduleScan(true);
+      if (msg.type === Types.MSG_TYPE.EXTENSION_TOGGLE) {
+        setActive(msg.active === true);
       }
       if (msg.type === "RETRY_SCAN") {
-        retryScan();
+        setActive(true, true);
       }
     });
     try {
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== "sync" || !changes.extensionEnabled) return;
-        isActive = changes.extensionEnabled.newValue === true;
-        if (isActive) retryScan();
+        setActive(changes.extensionEnabled.newValue === true);
       });
     } catch (_) {}
     // Also try Chrome"s built-in AI
@@ -321,50 +309,56 @@
     return { id, questionText: text, type, options };
   }
   function handleAnswers(results) {
-    let choiceCount = 0, fillCount = 0, shortCount = 0, failCount = 0;
+    if (!isActive) return;
     results.forEach((r) => {
       const el = elementMap.get(r.id);
       if (!el) return;
       if (r.displayAsText) {
         Annotator.annotateText(el, r);
-        shortCount++;
         return;
       }
       if (r.source === Types.ANSWER_SOURCE.FAILED) {
         Annotator.markFailed(el, r);
-        failCount++;
         return;
       }
       switch (r.type) {
         case Types.QUESTION_TYPE.CHOICE:
           Annotator.annotateChoice(el, r);
-          choiceCount++;
           break;
         case Types.QUESTION_TYPE.FILL:
           Annotator.annotateFill(el, r);
-          fillCount++;
           break;
         case Types.QUESTION_TYPE.SHORT_ANSWER:
         case Types.QUESTION_TYPE.CODING:
           Annotator.annotateText(el, r);
-          shortCount++;
           break;
       }
     });
-    Panel.updateStats({ choiceCount, fillCount, shortCount, failCount, total: results.length });
   }
   // ── Public API ──
   root.AutoAnswer.content = root.AutoAnswer.content || {};
   root.AutoAnswer.content.toggle = (active) => {
-    isActive = active === true;
-    try { chrome.storage.sync.set({ extensionEnabled: isActive }); } catch (_) {}
-    if (isActive) retryScan();
+    setActive(active === true);
+    try { chrome.storage.sync.set({ extensionEnabled: active === true }); } catch (_) {}
   };
   root.AutoAnswer.content.retry = retryScan;
   root.AutoAnswer.content.getStats = () => ({
     detected: elementMap.size,
     answered: document.querySelectorAll(".aa-badge").length,
   });
+
+  function setActive(active, forceScan) {
+    const nextActive = active === true;
+    const changed = isActive !== nextActive;
+    isActive = nextActive;
+    if (!isActive) {
+      clearTimeout(scanTimer);
+      scanTimer = null;
+      clearAnnotations();
+      return;
+    }
+    if (changed || forceScan) retryScan();
+  }
 
   function retryScan() {
     scanFailCount = 0;
@@ -383,10 +377,6 @@
       .forEach((el) => el.classList.remove("aa-highlight-option"));
   }
 
-  function removePanel() {
-    const panel = document.getElementById("aa-panel");
-    if (panel) panel.remove();
-  }
   // ── Start ──
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

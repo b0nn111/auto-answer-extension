@@ -22,7 +22,9 @@
     syncToken: "", syncRepo: "b0nn111/auto-answer-extension", syncPath: "question-bank.json",
   };
 
-  (async function loadSettings() {
+  const settingsReady = loadSettings();
+
+  async function loadSettings() {
     try {
       const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey", "freeSearchEnabled", "freeSearchUrl"]);
       if (s.ollamaUrl) settings.ollamaUrl = s.ollamaUrl;
@@ -35,7 +37,7 @@
       // Migrate old deepseekKey setting
       if (!settings.aiApiKey && s.deepseekKey) settings.aiApiKey = s.deepseekKey;
     } catch (_) {}
-  })();
+  }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg.type) {
@@ -87,6 +89,7 @@
 
   async function handleDiagnostic(sendResponse) {
     try {
+      await settingsReady;
       const [models, stats, materialStats, aiTest] = await Promise.all([
         Ollama.listModels(settings.ollamaUrl).catch(() => null),
         DB.getStats().catch(() => null),
@@ -120,6 +123,11 @@
 
   async function handleDetectQuestions(questions, sendResponse) {
     try {
+      await settingsReady;
+      if (!Array.isArray(questions)) {
+        sendResponse([]);
+        return;
+      }
       // Process all questions in parallel (with timeout)
       const pool = questions.map(q =>
         processQuestion(q).catch(() => ({ id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0, error: "处理异常" }))
@@ -136,11 +144,12 @@
     const candidates = [];
     const exact = await DB.getByHash(hash);
     if (exact) {
-      DB._incrementHit(hash, exact).catch(() => {});
+      await DB._incrementHit(hash, exact).catch(() => {});
       candidates.push(makeCandidate(q, exact.answer, Types.ANSWER_SOURCE.CACHE, exact.confidence, { cache: true }));
+    } else {
+      const fuzzy = await DB.fuzzySearch(q.questionText);
+      if (fuzzy) candidates.push(makeCandidate(q, fuzzy.answer, Types.ANSWER_SOURCE.CACHE, fuzzy.confidence, { cache: true }));
     }
-    const fuzzy = await DB.fuzzySearch(q.questionText);
-    if (fuzzy) candidates.push(makeCandidate(q, fuzzy.answer, Types.ANSWER_SOURCE.CACHE, fuzzy.confidence, { cache: true }));
     const materialContext = await MaterialRetriever.retrieve(q.questionText, q.options).catch(() => []);
     if (settings.freeSearchEnabled) {
       const searchResult = await WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options });
@@ -149,8 +158,9 @@
           displayAsText: searchResult.displayAsText === true,
           warning: searchResult.warning,
         }));
+      } else {
+        console.log("[答题助手] 免费搜题未命中:", searchResult.error);
       }
-      console.log("[答题助手] 免费搜题未命中:", searchResult.error);
     }
     if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
       const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
@@ -162,8 +172,7 @@
       const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext });
       if (aiResult.success) {
         candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, { materials: materialContext }));
-      }
-        else {
+      } else {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);
       }
     }
