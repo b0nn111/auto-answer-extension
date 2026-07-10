@@ -52,13 +52,13 @@ $env:EDGE_PROXY = "http://127.0.0.1:9910"
 使用已经存在的 zip，不重新打包：
 
 ```powershell
-.\scripts\publish-edge.ps1 -SkipPackage -PackagePath ".\releases\auto-answer-extension-v1.2.0.zip"
+.\scripts\publish-edge.ps1 -SkipPackage -PackagePath ".\releases\auto-answer-extension-v1.2.1.zip"
 ```
 
 自定义认证说明：
 
 ```powershell
-.\scripts\publish-edge.ps1 -PublishNotes "Version 1.2.0 adds local material folders and file-level enablement."
+.\scripts\publish-edge.ps1 -PublishNotes "Version 1.2.1 improves multi-select accuracy, source consensus, and diagnostics."
 ```
 
 ## 失败处理

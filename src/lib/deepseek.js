@@ -10,6 +10,7 @@
       const model = (opts && opts.model) || "deepseek-chat";
       const options = (opts && opts.options) || [];
       const context = (opts && opts.context) || [];
+      const multiple = opts && opts.multiple === true;
 
       if (!apiKey && !baseUrl.match(/^https?:\/\/(localhost|127\.0\.0\.1|::1)/)) return { success: false, error: "No API key configured" };
 
@@ -22,6 +23,9 @@
       }
 
       const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
+      const choiceInstruction = multiple
+        ? "这是多选题，请输出全部正确选项的字母和内容（如 'A. One；C. Three'），不要遗漏正确项。"
+        : "如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。";
 
       try {
         const resp = await fetch(url, {
@@ -33,7 +37,7 @@
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: "system", content: "你是一个答题助手。如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。如果提供了用户资料片段，请优先参考资料，但资料和题目冲突时以题目为准。" },
+              { role: "system", content: "你是一个答题助手。" + choiceInstruction + "如果提供了用户资料片段，请优先参考资料，但资料和题目冲突时以题目为准。" },
               { role: "user", content: prompt },
             ],
             temperature: 0.3,

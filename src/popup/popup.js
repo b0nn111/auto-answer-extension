@@ -69,10 +69,11 @@ async function runDiagnostics() {
   try {
     const result = await chrome.runtime.sendMessage({ type: "RUN_DIAGNOSTIC" });
     if (!result) throw new Error("No response");
+    const metrics = result.sourceMetrics || {};
 
     // AI API
     if (result.aiApi?.connected) {
-      setStatus("diag-aiapi", "ok", "已连接");
+      setStatus("diag-aiapi", "ok", "已连接" + metricSuffix(metrics.ai_api));
     } else if (result.aiApi?.configured) {
       setStatus("diag-aiapi", "err", result.aiApi.error || "连接失败");
     } else {
@@ -81,7 +82,7 @@ async function runDiagnostics() {
 
     // Local AI
     if (result.ollama?.running) {
-      setStatus("diag-localai", "ok", "运行中 · " + (result.ollama.models || 0) + " 模型");
+      setStatus("diag-localai", "ok", "运行中 · " + (result.ollama.models || 0) + " 模型" + metricSuffix(metrics.ollama));
     } else {
       setStatus("diag-localai", "warn", "未运行");
     }
@@ -89,7 +90,7 @@ async function runDiagnostics() {
     if (result.freeSearch?.enabled) {
       const url = result.freeSearch.url || "";
       const host = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-      setStatus("diag-freesearch", "ok", "已开启" + (host ? " · " + host : ""));
+      setStatus("diag-freesearch", "ok", "已开启" + (host ? " · " + host : "") + metricSuffix(metrics.free_search));
     } else {
       setStatus("diag-freesearch", "warn", "未开启");
     }
@@ -97,7 +98,7 @@ async function runDiagnostics() {
     const materials = result.materials || { enabledFiles: 0, files: 0, chunks: 0 };
     if (materials.files > 0 && materials.enabledFiles > 0) {
       const enabledChunks = materials.enabledChunks ?? materials.chunks;
-      setStatus("diag-materials", "ok", materials.enabledFiles + "/" + materials.files + " 文件 · " + enabledChunks + " 片段");
+      setStatus("diag-materials", "ok", materials.enabledFiles + "/" + materials.files + " 文件 · " + enabledChunks + " 片段" + metricSuffix(metrics.materials));
     } else if (materials.files > 0) {
       setStatus("diag-materials", "warn", "未启用文件");
     } else {
@@ -107,7 +108,7 @@ async function runDiagnostics() {
     // Database
     const db = result.database;
     if (db?.available) {
-      setStatus("diag-db", "ok", db.totalCached + " 题 · 命中 " + (db.totalMatches || 0) + " 次");
+      setStatus("diag-db", "ok", db.totalCached + " 题 · 命中 " + (db.totalMatches || 0) + " 次" + metricSuffix(metrics.cache));
     } else {
       setStatus("diag-db", "err", "不可用");
     }
@@ -120,6 +121,16 @@ async function runDiagnostics() {
     setStatus("diag-db", "err", "通信失败");
     setStatus("diag-ext", "err", "Service Worker 未响应");
   }
+}
+
+function metricSuffix(metric) {
+  if (!metric || !metric.requests) return "";
+  if (metric.lastOutcome === "success") return " · " + metric.lastLatencyMs + "ms";
+  if (metric.lastOutcome === "miss") {
+    return " · 最近" + (metric.lastError || "未命中");
+  }
+  const httpStatus = String(metric.lastError || "").match(/HTTP\s+\d+/i);
+  return " · 最近" + (httpStatus ? httpStatus[0].toUpperCase() : "失败");
 }
 
 function setStatus(id, cls, text) {

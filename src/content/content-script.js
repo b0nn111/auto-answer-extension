@@ -67,8 +67,11 @@
   function scheduleScan(force) {
     clearTimeout(scanTimer);
     const now = Date.now();
-    if (!force && now - lastScanTime < MIN_SCAN_INTERVAL) return;
-    scanTimer = setTimeout(detectAndSend, 500);
+    const elapsed = now - lastScanTime;
+    const cooldownDelay = !force && elapsed < MIN_SCAN_INTERVAL
+      ? MIN_SCAN_INTERVAL - elapsed
+      : 0;
+    scanTimer = setTimeout(detectAndSend, Math.max(500, cooldownDelay));
   }
   // ── Detection: targeted only, no broad selectors ──
   function detectAndSend() {
@@ -198,6 +201,7 @@
       stemText,
       type,
       options,
+      multiple: hasCheckbox,
       dedupeKey: "moodle:" + Matcher.normalizeText(stableId).slice(0, 120),
     };
   }
@@ -287,7 +291,7 @@
       if (text.length < 30) return null;
       // Extract options from text using regex (works regardless of DOM structure)
       const optMap = new Map();
-      const optRe = /(?:\b)([A-Da-d])\s*[\.\)、]\s*([^\n]{2,150}?)(?=\s+[A-Da-d]\s*[\.\)、]|\s+[^A-Za-z]|$)/g;
+      const optRe = /(?:\b)([A-Za-z])\s*[\.\)、]\s*([^\n]{2,150}?)(?=\s+[A-Za-z]\s*[\.\)、]|\s+[^A-Za-z]|$)/g;
       let m;
       while ((m = optRe.exec(text)) !== null) {
         const val = m[2].trim();
@@ -306,7 +310,7 @@
     } else if (text.length > 40) {
       type = Types.QUESTION_TYPE.SHORT_ANSWER;
     }
-    return { id, questionText: text, type, options };
+    return { id, questionText: text, type, options, multiple: signals.hasCheckbox === true };
   }
   function handleAnswers(results) {
     if (!isActive) return;

@@ -18,6 +18,7 @@ Thumbs.db
 
 # Test files
 work/
+releases/*-unpacked/
 
 # Logs
 *.log

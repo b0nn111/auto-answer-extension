@@ -27,11 +27,14 @@
       const model = (opts && opts.model) || "qwen2.5:7b";
       const options = (opts && opts.options) || [];
       const context = (opts && opts.context) || [];
+      const multiple = opts && opts.multiple === true;
 
       // Include options in prompt for better answer format
       let prompt =
         "你是一个答题助手。请回答下面的题目。\n" +
-        "如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。\n" +
+        (multiple
+          ? "这是多选题，请输出全部正确选项的字母和内容（如 'A. One；C. Three'），不要遗漏正确项。\n"
+          : "如果是选择题，请输出正确选项的字母和选项内容（如 'B. Paris'），方便验证。\n") +
         "如果是填空题或简答题，直接输出答案，不要解释。\n" +
         "如果提供了用户资料片段，请优先参考资料，但资料和题目冲突时以题目为准。\n\n" +
         "题目：" + questionText;

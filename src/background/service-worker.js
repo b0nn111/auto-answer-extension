@@ -1,6 +1,7 @@
 ﻿importScripts(
   "../lib/types.js",
   "../lib/matcher.js",
+  "../lib/answer-normalizer.js",
   "../lib/db.js",
   "../lib/material-db.js",
   "../lib/material-retriever.js",
@@ -11,7 +12,7 @@
 
 (function () {
   "use strict";
-  const { Types, DB, Matcher, MaterialDB, MaterialRetriever, WebSearch, Ollama, AiApi } = self.AutoAnswer;
+  const { Types, DB, Matcher, AnswerNormalizer, MaterialDB, MaterialRetriever, WebSearch, Ollama, AiApi } = self.AutoAnswer;
 
   let settings = {
     ollamaUrl: Types.DEFAULT_OLLAMA_URL,
@@ -19,8 +20,9 @@
     aiApiUrl: Types.DEFAULT_AI_API_URL, aiApiKey: "", aiApiModel: Types.DEFAULT_AI_MODEL,
     freeSearchEnabled: false,
     freeSearchUrl: Types.DEFAULT_FREE_SEARCH_URL,
-    syncToken: "", syncRepo: "b0nn111/auto-answer-extension", syncPath: "question-bank.json",
   };
+  const sourceMetrics = {};
+  const MAX_QUESTION_CONCURRENCY = 4;
 
   const settingsReady = loadSettings();
 
@@ -102,10 +104,11 @@
         freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl },
         materials: materialStats || { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 },
         database: { available: stats !== null, totalCached: stats ? stats.totalCached : 0, totalMatches: stats ? stats.totalMatches : 0 },
+        sourceMetrics: snapshotMetrics(),
       });
     } catch (err) {
       const aiErr = settings.aiApiKey ? "自检异常" : "未配置";
-      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, materials: { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 } });
+      sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, materials: { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 }, sourceMetrics: snapshotMetrics() });
     }
   }
 
@@ -128,11 +131,9 @@
         sendResponse([]);
         return;
       }
-      // Process all questions in parallel (with timeout)
-      const pool = questions.map(q =>
+      const results = await mapWithConcurrency(questions, MAX_QUESTION_CONCURRENCY, (q) =>
         processQuestion(q).catch(() => ({ id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0, error: "处理异常" }))
       );
-      const results = await Promise.all(pool);
       sendResponse(results);
     } catch (err) {
       sendResponse([]);
@@ -142,37 +143,61 @@
   async function processQuestion(q) {
     const hash = await Matcher.hashText(q.questionText);
     const candidates = [];
-    const exact = await DB.getByHash(hash);
-    if (exact) {
-      await DB._incrementHit(hash, exact).catch(() => {});
-      candidates.push(makeCandidate(q, exact.answer, Types.ANSWER_SOURCE.CACHE, exact.confidence, { cache: true }));
-    } else {
-      const fuzzy = await DB.fuzzySearch(q.questionText);
-      if (fuzzy) candidates.push(makeCandidate(q, fuzzy.answer, Types.ANSWER_SOURCE.CACHE, fuzzy.confidence, { cache: true }));
+    const cacheResult = await measureSource("cache", async () => {
+      const exact = await DB.getByHash(hash);
+      if (exact) {
+        await DB._incrementHit(hash, exact).catch(() => {});
+        return exact;
+      }
+      return DB.fuzzySearch(q.questionText);
+    }, (value) => value ? "success" : "miss");
+    if (cacheResult) {
+      candidates.push(makeCandidate(q, cacheResult.answer, Types.ANSWER_SOURCE.CACHE, cacheResult.confidence, { provider: Types.ANSWER_SOURCE.CACHE }));
     }
-    const materialContext = await MaterialRetriever.retrieve(q.questionText, q.options).catch(() => []);
+
+    const materialContext = await measureSource(
+      "materials",
+      () => MaterialRetriever.retrieve(q.questionText, q.options),
+      (value) => value && value.length ? "success" : "miss"
+    ) || [];
+
     if (settings.freeSearchEnabled) {
-      const searchResult = await WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options });
-      if (searchResult.success) {
+      const searchResult = await measureSource(
+        "free_search",
+        () => WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options, multiple: q.multiple === true }),
+        classifySearchResult
+      );
+      if (searchResult?.success) {
         candidates.push(makeCandidate(q, searchResult.answer, Types.ANSWER_SOURCE.FREE_SEARCH, searchResult.confidence, {
           displayAsText: searchResult.displayAsText === true,
           warning: searchResult.warning,
+          provider: Types.ANSWER_SOURCE.FREE_SEARCH,
         }));
-      } else {
+      } else if (searchResult) {
         console.log("[答题助手] 免费搜题未命中:", searchResult.error);
       }
     }
-    if (settings.ollamaUrl && await Ollama.checkRunning(settings.ollamaUrl).catch(() => false)) {
-      const ollamaResult = await Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext });
-      if (ollamaResult.success) {
-        candidates.push(makeCandidate(q, ollamaResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, materialContext.length ? Math.min(0.92, ollamaResult.confidence + 0.08) : ollamaResult.confidence, { materials: materialContext }));
+
+    if (settings.ollamaUrl) {
+      const ollamaResult = await measureSource("ollama", async () => {
+        const running = await Ollama.checkRunning(settings.ollamaUrl).catch(() => false);
+        if (!running) return { success: false, unavailable: true, error: "未运行" };
+        return Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext, multiple: q.multiple === true });
+      }, (value) => value?.success ? "success" : (value?.unavailable ? "miss" : "error"));
+      if (ollamaResult?.success) {
+        candidates.push(makeCandidate(q, ollamaResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, ollamaResult.confidence, { materials: materialContext, provider: Types.ANSWER_SOURCE.OLLAMA }));
       }
     }
+
     if (settings.aiApiKey) {
-      const aiResult = await AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext });
-      if (aiResult.success) {
-        candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, materialContext.length ? Math.min(0.96, aiResult.confidence + 0.04) : aiResult.confidence, { materials: materialContext }));
-      } else {
+      const aiResult = await measureSource(
+        "ai_api",
+        () => AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext, multiple: q.multiple === true }),
+        (value) => value?.success ? "success" : "error"
+      );
+      if (aiResult?.success) {
+        candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, aiResult.confidence, { materials: materialContext, provider: Types.ANSWER_SOURCE.AI_API }));
+      } else if (aiResult) {
         console.log("[答题助手] AI API 请求失败:", aiResult.error);
       }
     }
@@ -185,6 +210,8 @@
         answer: best.answer,
         source: best.source,
         confidence: best.confidence,
+        optionLetters: best.optionLetters,
+        multiple: q.multiple === true,
         displayAsText: best.displayAsText === true,
         warning: best.warning,
         questionStem: q.stemText || q.questionText,
@@ -195,82 +222,158 @@
   }
 
   function makeCandidate(q, answer, source, confidence, extra) {
-    const optionMatch = matchOption(answer, q.options || []);
-    const displayAsText = extra?.displayAsText === true || (q.type === Types.QUESTION_TYPE.CHOICE && !optionMatch);
+    const rawAnswer = String(answer || "").trim();
+    const choiceMatch = q.type === Types.QUESTION_TYPE.CHOICE
+      ? AnswerNormalizer.match(rawAnswer, q.options || [], q.multiple === true)
+      : { matched: false, answer: rawAnswer, letters: [] };
+    const optionMatch = choiceMatch.matched === true;
+    const displayAsText = q.type === Types.QUESTION_TYPE.CHOICE
+      ? !optionMatch
+      : extra?.displayAsText === true;
     const adjustedConfidence = scoreCandidate(source, confidence, optionMatch, displayAsText);
+    const provider = extra?.provider || source;
     return {
-      answer: optionMatch || String(answer || "").trim(),
-      rawAnswer: String(answer || "").trim(),
+      answer: optionMatch ? choiceMatch.answer : rawAnswer,
+      rawAnswer,
+      optionLetters: choiceMatch.letters || [],
       source,
-      sourceLabel: sourceLabel(source),
+      provider,
+      sourceLabel: sourceLabel(source, provider),
       confidence: adjustedConfidence,
+      baseConfidence: adjustedConfidence,
       displayAsText,
-      warning: extra?.warning || (displayAsText && q.type === Types.QUESTION_TYPE.CHOICE ? "答案未能对应选项，按文本展示" : ""),
+      warning: displayAsText && q.type === Types.QUESTION_TYPE.CHOICE
+        ? (extra?.warning || "答案未能对应选项，按文本展示")
+        : "",
       materials: extra?.materials || [],
     };
   }
 
   function rankCandidates(candidates) {
     const seen = new Set();
-    return candidates
+    const uniqueCandidates = candidates
       .filter((item) => item.answer)
-      .sort((a, b) => b.confidence - a.confidence)
       .filter((item) => {
-        const key = Matcher.normalizeText(item.source + ":" + item.answer);
+        const key = item.provider + ":" + candidateKey(item);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       });
+
+    const groups = new Map();
+    uniqueCandidates.forEach((item) => {
+      const key = candidateKey(item);
+      if (!groups.has(key)) groups.set(key, new Set());
+      groups.get(key).add(item.provider);
+    });
+
+    const ranked = uniqueCandidates
+      .map((item) => {
+        const providers = groups.get(candidateKey(item));
+        const consensusCount = providers ? providers.size : 1;
+        const agreementBoost = Math.min(0.2, Math.max(0, consensusCount - 1) * 0.1);
+        return {
+          ...item,
+          confidence: clampConfidence(item.baseConfidence + agreementBoost),
+          consensusCount,
+          agreementSources: Array.from(providers || []),
+        };
+      })
+      .sort((a, b) => b.confidence - a.confidence);
+
+    if (ranked.length && groups.size > 1) {
+      ranked[0].warning = appendWarning(ranked[0].warning, "不同来源答案存在冲突");
+    }
+    return ranked;
   }
 
   function scoreCandidate(source, confidence, optionMatch, displayAsText) {
     const sourceBoost = {
-      cache: 0.12,
-      material_ai: 0.08,
-      ai_api: 0.06,
-      ollama: 0.03,
-      free_search: -0.08,
-      material: 0.04,
+      cache: 0.05,
+      material_ai: 0.03,
+      ai_api: 0.01,
+      ollama: 0,
+      free_search: -0.04,
+      material: 0.02,
     }[source] || 0;
-    const matchBoost = optionMatch ? 0.08 : 0;
+    const matchBoost = optionMatch ? 0.03 : 0;
     const textPenalty = displayAsText ? -0.18 : 0;
-    return Math.max(0.05, Math.min(0.99, Number(confidence || 0.5) + sourceBoost + matchBoost + textPenalty));
+    return clampConfidence(Number(confidence || 0.5) + sourceBoost + matchBoost + textPenalty);
   }
 
-  function matchOption(answer, options) {
-    if (!options || options.length === 0) return "";
-    const parsed = parseChoiceText(answer);
-    const normAnswer = Matcher.normalizeText(parsed.text || answer);
-    let best = null;
-    options.forEach((option, index) => {
-      const parsedOption = parseChoiceText(option);
-      const letter = parsedOption.letter || String.fromCharCode(65 + index);
-      const text = parsedOption.text || String(option || "");
-      const normOption = Matcher.normalizeText(text);
-      let score = 0;
-      if (parsed.letter && parsed.letter === letter) score = 1;
-      if (normAnswer && normOption) {
-        if (normAnswer === normOption) score = Math.max(score, 0.98);
-        if (normAnswer.includes(normOption) || normOption.includes(normAnswer)) score = Math.max(score, 0.9);
-        score = Math.max(score, Matcher.jaccardSimilarity(normAnswer, normOption));
+  function candidateKey(candidate) {
+    if (candidate.optionLetters && candidate.optionLetters.length) {
+      return "choice:" + candidate.optionLetters.slice().sort().join(",");
+    }
+    return "text:" + AnswerNormalizer.normalize(candidate.answer);
+  }
+
+  function clampConfidence(value) {
+    return Math.max(0.05, Math.min(0.98, Number(value || 0.5)));
+  }
+
+  function appendWarning(current, next) {
+    return current ? current + "；" + next : next;
+  }
+
+  async function measureSource(key, task, classify) {
+    const startedAt = Date.now();
+    try {
+      const value = await task();
+      const outcome = classify ? classify(value) : "success";
+      recordMetric(key, outcome, Date.now() - startedAt, value?.error || "");
+      return value;
+    } catch (err) {
+      recordMetric(key, "error", Date.now() - startedAt, err?.message || String(err));
+      return null;
+    }
+  }
+
+  function classifySearchResult(result) {
+    if (result?.success) return "success";
+    return /HTTP\s+\d+|timeout|timed out|fetch|network/i.test(result?.error || "") ? "error" : "miss";
+  }
+
+  function recordMetric(key, outcome, latencyMs, error) {
+    const metric = sourceMetrics[key] || { requests: 0, successes: 0, misses: 0, failures: 0 };
+    metric.requests++;
+    if (outcome === "success") metric.successes++;
+    else if (outcome === "miss") metric.misses++;
+    else metric.failures++;
+    metric.lastOutcome = outcome;
+    metric.lastLatencyMs = Math.max(0, Math.round(latencyMs));
+    metric.lastError = sanitizeError(error);
+    sourceMetrics[key] = metric;
+  }
+
+  function snapshotMetrics() {
+    return Object.fromEntries(Object.entries(sourceMetrics).map(([key, value]) => [key, { ...value }]));
+  }
+
+  function sanitizeError(error) {
+    return String(error || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  }
+
+  async function mapWithConcurrency(items, limit, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(items[index], index);
       }
-      if (!best || score > best.score) best = { score, letter, text };
     });
-    return best && best.score >= 0.55 ? best.letter + ". " + best.text : "";
+    await Promise.all(workers);
+    return results;
   }
 
-  function parseChoiceText(text) {
-    const raw = String(text || "").trim();
-    const match = raw.match(/^([A-Da-d])(?:\s*[\.\)、]|\s*$)\s*(.*)$/);
-    if (!match) return { letter: "", text: raw };
-    return { letter: match[1].toUpperCase(), text: (match[2] || "").trim() };
-  }
-
-  function sourceLabel(source) {
+  function sourceLabel(source, provider) {
+    if (source === Types.ANSWER_SOURCE.MATERIAL_AI) {
+      return provider === Types.ANSWER_SOURCE.OLLAMA ? "资料库+本地 AI" : "资料库+AI API";
+    }
     return {
       cache: "本地题库",
       material: "本地资料库",
-      material_ai: "资料库+AI",
       free_search: "公共搜题",
       ollama: "本地 AI",
       ai_api: "AI API",

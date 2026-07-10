@@ -2,7 +2,7 @@
   "use strict";
   const root = typeof self !== "undefined" ? self : window;
   root.AutoAnswer = root.AutoAnswer || {};
-  const { Types } = root.AutoAnswer;
+  const { Types, AnswerNormalizer } = root.AutoAnswer;
 
   const STYLE_ID = "aa-styles";
 
@@ -12,10 +12,11 @@
     style.id = STYLE_ID;
     style.textContent = `
       .aa-badge {
-        display: inline-flex; align-items: center; gap: 2px;
-        margin-left: 4px; padding: 0 6px; border-radius: 8px;
-        font-size: 11px; font-weight: 600; line-height: 18px;
-        vertical-align: middle; white-space: nowrap; pointer-events: none;
+        display: inline-block; max-width: calc(100% - 8px);
+        margin-left: 4px; padding: 3px 7px; border-radius: 6px;
+        font-size: 11px; font-weight: 600; line-height: 1.45;
+        vertical-align: middle; white-space: normal; overflow-wrap: anywhere;
+        word-break: break-word; pointer-events: none;
       }
       .aa-badge--cache { background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; }
       .aa-badge--material { background:#ecfdf3; color:#067647; border:1px solid #75e0a7; }
@@ -88,44 +89,34 @@
       return;
     }
     const answerText = (result.answer || "").trim();
-    const answer = parseAnswer(answerText);
     const badge = sourceBadge(result.source, result.confidence, answerText) + stemTip(result);
 
     const candidates = getChoiceCandidates(container);
+    const validLetters = candidates.map((candidate) => candidate.letter).filter(Boolean);
+    const optionLetters = Array.isArray(result.optionLetters) && result.optionLetters.length
+      ? result.optionLetters
+      : AnswerNormalizer.extractLetters(answerText, validLetters, result.multiple === true);
+    let matchedCandidates = optionLetters.length
+      ? candidates.filter((candidate) => optionLetters.includes(candidate.letter))
+      : [];
+    if (optionLetters.length && matchedCandidates.length !== optionLetters.length) {
+      matchedCandidates = [];
+    }
 
-    let matchedEl = null;
-    let bestScore = 0;
+    if (!optionLetters.length && !matchedCandidates.length) {
+      const answer = parseAnswer(answerText);
+      const compareText = (answer.optionText || answer.raw).toLowerCase();
+      let best = null;
+      candidates.forEach((candidate) => {
+        const similarity = jaccardSimple(candidate.optionText.toLowerCase(), compareText);
+        if (!best || similarity > best.score) best = { candidate, score: similarity };
+      });
+      if (best && best.score > 0.1) matchedCandidates = [best.candidate];
+    }
 
-    candidates.forEach((candidate) => {
-      const txt = candidate.text.toLowerCase().trim();
-      if (!txt || txt.length < 2) return;
-
-      if (answer.letter && candidate.letter && answer.letter === candidate.letter) {
-        matchedEl = candidate.element;
-        bestScore = 1.0;
-        return;
-      }
-
-      if (answer.letter && !candidate.letter) {
-        const pattern = new RegExp("^\\s*" + answer.letter + "[\\.\\)、]", "i");
-        if (pattern.test(txt)) {
-          matchedEl = candidate.element;
-          bestScore = 1.0;
-          return;
-        }
-      }
-
-      const compareText = answer.optionText || answer.raw;
-      const similarity = jaccardSimple(candidate.optionText.toLowerCase(), compareText.toLowerCase());
-      if (similarity > bestScore) {
-        bestScore = similarity;
-        matchedEl = candidate.element;
-      }
-    });
-
-    if (matchedEl && bestScore > 0.1) {
-      matchedEl.classList.add("aa-highlight-option");
-      const badgeTarget = getBadgeTarget(matchedEl);
+    if (matchedCandidates.length) {
+      matchedCandidates.forEach((candidate) => candidate.element.classList.add("aa-highlight-option"));
+      const badgeTarget = getBadgeTarget(matchedCandidates[0].element);
       badgeTarget.insertAdjacentHTML("beforeend", badge);
       appendCandidateToggle(container, result);
     } else {
@@ -148,7 +139,7 @@
       seen.add(row);
       const labelEl = row.querySelector('[data-region="answer-label"]') || row;
       const numberText = cleanText(labelEl.querySelector(".answernumber"));
-      const letter = parseOptionLetter(numberText) || parseOptionLetter(labelEl.textContent);
+      const letter = parseOptionLetter(numberText) || parseOptionLetter(labelEl.textContent) || String.fromCharCode(65 + candidates.length);
       let optionText = cleanText(labelEl, [".answernumber", ".aa-badge"]);
       optionText = optionText.replace(/^[a-z]\s*[\.\)、]\s*/i, "").trim();
       const fullText = cleanText(row, [".aa-badge"]);
@@ -167,7 +158,7 @@
   function parseAnswer(text) {
     const raw = String(text || "").trim();
     const match = raw.match(/^([a-z])\s*[\.\)、]?\s*(.*)$/i);
-    const letter = match && /^[a-d]$/i.test(match[1]) ? match[1].toUpperCase() : "";
+    const letter = match && /^[a-z]$/i.test(match[1]) ? match[1].toUpperCase() : "";
     const optionText = letter ? (match[2] || "").trim() : raw;
     return { raw, letter, optionText };
   }
@@ -190,10 +181,9 @@
   function formatAnswerForBadge(answerText) {
     const text = String(answerText || "").trim();
     if (!text) return "";
-    const short = text.length > 120 ? text.slice(0, 117) + "..." : text;
-    const match = short.match(/^([a-z])(\s*[\.\)、]?.*)$/i);
-    if (match && /^[a-d]$/i.test(match[1])) return " " + match[1].toUpperCase() + match[2];
-    return " " + short;
+    const match = text.match(/^([a-z])(\s*[\.\)、]?.*)$/i);
+    if (match && /^[a-z]$/i.test(match[1])) return " " + match[1].toUpperCase() + match[2];
+    return " " + text;
   }
 
   function annotateFill(container, result) {
@@ -261,10 +251,11 @@
     return candidates.map((item, index) => {
       const title = (index === 0 ? "最佳 · " : "") + (item.sourceLabel || sourceLabel(item.source));
       const pct = typeof item.confidence === "number" ? Math.round(item.confidence * 100) + "%" : "";
+      const agreement = item.consensusCount > 1 ? " · " + item.consensusCount + " 个来源一致" : "";
       const warning = item.warning ? " · " + item.warning : "";
       return '<div class="aa-candidate">' +
         '<div><span class="aa-candidate-source">' + escapeHtml(title) + '</span>' +
-        '<span class="aa-candidate-meta">' + escapeHtml(pct + warning) + '</span></div>' +
+        '<span class="aa-candidate-meta">' + escapeHtml(pct + agreement + warning) + '</span></div>' +
         '<div class="aa-candidate-answer">' + escapeHtml(item.answer || "(空)") + '</div>' +
         '</div>';
     }).join("");
