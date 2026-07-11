@@ -114,6 +114,18 @@
       return true;
     };
 
+    const extractor = root.AutoAnswer.QuestionExtractor;
+    if (extractor && typeof extractor.extract === "function") {
+      const extracted = extractor.extract({
+        createId: () => `q_${++questionCounter}`,
+      });
+      for (const item of extracted) addQ(item.question, item.element);
+      if (questions.length > 0) {
+        root.AutoAnswer.QuestionDebug?.logExtraction(extracted);
+        return questions;
+      }
+    }
+
     const moodleQuestions = detectMoodleQuestions();
     for (const item of moodleQuestions) addQ(item.question, item.element);
     if (questions.length > 0) return questions;

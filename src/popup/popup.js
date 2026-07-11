@@ -1,7 +1,23 @@
 ﻿document.addEventListener("DOMContentLoaded", () => {
-  const manifest = chrome.runtime.getManifest();
+  const hasChromeApi = typeof chrome !== "undefined" && chrome.runtime && chrome.storage;
+  const manifest = hasChromeApi && chrome.runtime.getManifest
+    ? chrome.runtime.getManifest()
+    : { version: "1.4.4" };
   const versionEl = document.getElementById("version");
   if (versionEl) versionEl.textContent = "v" + manifest.version;
+
+  if (!hasChromeApi) {
+    updateToggleUI(false);
+    setStatus("diag-aiapi", "warn", "预览模式");
+    setStatus("diag-localai", "warn", "预览模式");
+    setStatus("diag-freesearch", "warn", "预览模式");
+    setStatus("diag-materials", "warn", "预览模式");
+    setStatus("diag-db", "warn", "预览模式");
+    setStatus("diag-ext", "warn", "预览模式");
+    const logStatus = document.getElementById("log-status");
+    if (logStatus) logStatus.textContent = "静态预览中，扩展 API 不可用";
+    return;
+  }
 
   // Load toggle state
   chrome.storage.sync.get(["extensionEnabled"], (s) => {
@@ -144,7 +160,7 @@ function setStatus(id, cls, text) {
   el.className = "diag-item " + cls;
   const statusEl = el.querySelector(".diag-status");
   if (statusEl) statusEl.textContent = text;
-  const iconMap = { ok: "✅", err: "❌", warn: "⚠️", loading: "⏳" };
+  const iconMap = { ok: "✓", err: "×", warn: "!", loading: "…" };
   const iconEl = el.querySelector(".diag-icon");
   if (iconEl && iconMap[cls]) iconEl.textContent = iconMap[cls];
 }

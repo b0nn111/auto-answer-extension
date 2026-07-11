@@ -11,8 +11,15 @@
     <h1>自动答题助手</h1>
     <p class="subtitle">配置推理引擎、资料库和本地数据</p>
 
-    <section>
-      <h2>本地 AI 设置</h2>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">本地 AI 设置</span>
+          <span class="section-summary">Ollama / OpenAI 兼容本地接口</span>
+        </span>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
       <div class="field">
         <label for="ollamaUrl">地址</label>
         <input type="url" id="ollamaUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
@@ -23,10 +30,18 @@
         <button id="refreshModels" class="btn-sm">刷新列表</button>
       </div>
       <div id="ollamaStatus" class="status"></div>
-    </section>
+      </div>
+    </details>
 
-    <section>
-      <h2>AI API 设置（可选）</h2>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">AI API 设置（可选）</span>
+          <span class="section-summary">DeepSeek、通义千问、SiliconFlow 等</span>
+        </span>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
       <p class="hint">支持任何 OpenAI 兼容 API：DeepSeek、通义千问、SiliconFlow、Kimi、LM Studio 等。</p>
       <div class="field">
         <label for="aiApiUrl">API 地址</label>
@@ -44,21 +59,27 @@
         </div>
         <p class="hint">密钥仅保存在浏览器扩展存储中。</p>
       </div>
-    </section>
+      </div>
+    </details>
 
-    <section>
-      <h2>本地资料库</h2>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">本地资料库</span>
+          <span class="section-summary" id="materialSummary">读取资料库状态</span>
+        </span>
+        <label class="summary-check" for="materialFallbackEnabled">
+          <span>参考答案</span>
+          <input type="checkbox" id="materialFallbackEnabled">
+        </label>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
       <p class="hint source-note">
         你可以创建课程文件夹，例如“微积分”“线性代数”，再把讲义、作业、笔记放进去。答题时只会检索已启用的文件夹和文件。
       </p>
 
-      <label class="checkbox-row" for="materialFallbackEnabled">
-        <span>
-          <strong>启用无 AI 本地资料参考答案</strong>
-          <em>有 AI 成功回答时资料只作为 RAG 上下文；没有 AI 答案时，才按相似度给参考答案。</em>
-        </span>
-        <input type="checkbox" id="materialFallbackEnabled">
-      </label>
+      <p class="hint source-note">启用后，有 AI 成功回答时资料只作为 RAG 上下文；没有 AI 答案时，才按相似度给参考答案。</p>
       <div class="field compact-field">
         <label for="materialFallbackMinConfidence">本地参考答案最低概率</label>
         <input type="number" id="materialFallbackMinConfidence" min="30" max="90" step="5" value="55">
@@ -88,26 +109,40 @@
         <span id="materialChunkCount">0 个片段</span>
       </div>
       <div id="materialLibrary" class="material-library"></div>
-    </section>
+      </div>
+    </details>
 
-    <section>
-      <h2>免费搜题来源</h2>
-      <label class="checkbox-row" for="freeSearchEnabled">
-        <span>
-          <strong>启用全能搜题公开接口</strong>
-          <em>开启后会将题目文本发送到该公开接口，并与其他来源答案一起比较。</em>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">免费搜题来源</span>
+          <span class="section-summary" id="freeSearchSummary">默认关闭，可在收起状态切换</span>
         </span>
-        <input type="checkbox" id="freeSearchEnabled">
-      </label>
+        <label class="summary-check" for="freeSearchEnabled">
+          <span>启用</span>
+          <input type="checkbox" id="freeSearchEnabled">
+        </label>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
+      <p class="hint source-note">开启后会将题目文本发送到该公开接口，并与其他来源答案一起比较。</p>
       <div class="field">
         <label for="freeSearchUrl">接口地址</label>
         <input type="url" id="freeSearchUrl" value="https://study.jszkk.com/api/open/seek" placeholder="https://study.jszkk.com/api/open/seek">
       </div>
       <p class="hint source-note">默认关闭。公开题库由第三方提供，答案可能不完整或不准确。</p>
-    </section>
+      </div>
+    </details>
 
-    <section>
-      <h2>题库管理</h2>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">题库管理</span>
+          <span class="section-summary" id="questionBankSummary">读取题库状态</span>
+        </span>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
       <div id="stats" class="stats">
         <div class="stat-item">
           <span class="stat-value" id="statCached">-</span>
@@ -123,25 +158,66 @@
         </div>
       </div>
       <button id="clearCache" class="btn-danger">清空题库</button>
-    </section>
-
-    <section>
-      <h2>导入题库</h2>
-      <p class="hint">上传 JSON 文件批量导入题目。格式：<code>[{"question":"...","answer":"...","options":["..."]}]</code></p>
-      <div class="field">
-        <input type="file" id="importFile" accept=".json">
       </div>
-      <button id="importBtn" class="btn-sm">导入</button>
-      <div id="importStatus" class="status"></div>
-    </section>
+    </details>
 
-    <section>
-      <h2>数据来源说明</h2>
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">导入题库</span>
+          <span class="section-summary">JSON 批量导入，旁边有格式文档</span>
+        </span>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
+      <div class="import-layout">
+        <div>
+          <p class="hint">上传 JSON 文件批量导入题目。</p>
+          <div class="field">
+            <input type="file" id="importFile" accept=".json">
+          </div>
+          <button id="importBtn" class="btn-sm">导入</button>
+          <div id="importStatus" class="status"></div>
+        </div>
+        <article class="format-doc" aria-label="导入题目格式文档">
+          <h3>导入题目格式文档</h3>
+          <p>文件必须是 UTF-8 JSON，根节点是数组；每一项代表一道题。</p>
+          <dl>
+            <dt>question</dt>
+            <dd>必填，题干文本。也兼容 questionText 或 q。</dd>
+            <dt>answer</dt>
+            <dd>必填，标准答案。也兼容 a 或 ans。</dd>
+            <dt>options</dt>
+            <dd>选填，选择题选项数组。也兼容 choices。</dd>
+          </dl>
+          <pre><code>[
+  {
+    "question": "中国的首都是哪里？",
+    "answer": "北京",
+    "options": ["北京", "上海", "广州", "深圳"]
+  }
+]</code></pre>
+          <p>导入时缺少题干或答案的条目会跳过，其他条目会写入本地题库。</p>
+        </article>
+      </div>
+      </div>
+    </details>
+
+    <details class="settings-section">
+      <summary class="section-head">
+        <span class="section-copy">
+          <span class="section-title">数据来源说明</span>
+          <span class="section-summary">本地数据、云端 API 与隐私边界</span>
+        </span>
+        <span class="section-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="section-body">
       <p class="hint source-note">
         本扩展会收集本地题库、免费搜题、本地 AI 和 AI API 的可用答案，按匹配度与置信度排序；已启用资料片段会作为 AI 的参考上下文。
         资料库文件只保存在本地浏览器 IndexedDB 中；只有启用云端 API 或免费搜题时，相关题目和片段才会发送到对应服务。
       </p>
-    </section>
+      </div>
+    </details>
 
     <div class="actions">
       <button id="saveBtn" class="btn-primary">保存设置</button>

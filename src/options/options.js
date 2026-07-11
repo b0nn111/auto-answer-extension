@@ -31,6 +31,8 @@
     if (stored.freeSearchUrl) $("freeSearchUrl").value = stored.freeSearchUrl;
     $("materialFallbackEnabled").checked = stored.materialFallbackEnabled !== false;
     $("materialFallbackMinConfidence").value = Math.round(normalizeMaterialFallbackMinConfidence(stored.materialFallbackMinConfidence) * 100);
+    updateFreeSearchSummary();
+    updateMaterialSummary();
   }
 
   async function saveSettings() {
@@ -102,10 +104,12 @@
       $("statCached").textContent = totalCached;
       $("statMatched").textContent = totalMatches;
       $("statRate").textContent = referenceRate;
+      $("questionBankSummary").textContent = totalCached + " 道题，命中参考 " + referenceRate;
     } catch (_) {
       $("statCached").textContent = "-";
       $("statMatched").textContent = "-";
       $("statRate").textContent = "-";
+      $("questionBankSummary").textContent = "题库状态读取失败";
     }
   }
 
@@ -134,6 +138,7 @@
     $("materialFileCount").textContent = stats.enabledFiles + "/" + stats.files + " 个文件启用";
     const enabledChunks = stats.enabledChunks ?? stats.chunks;
     $("materialChunkCount").textContent = enabledChunks + "/" + stats.chunks + " 个片段启用";
+    updateMaterialSummary();
 
     const target = $("targetFolder");
     target.innerHTML = folders.length
@@ -413,6 +418,27 @@
     $("toggleKey").textContent = keyVisible ? "隐藏" : "显示";
   }
 
+  function updateFreeSearchSummary() {
+    const enabled = $("freeSearchEnabled").checked === true;
+    $("freeSearchSummary").textContent = enabled
+      ? "已启用：会调用公开搜题接口"
+      : "已关闭：不会发送到免费搜题接口";
+  }
+
+  function updateMaterialSummary() {
+    const stats = materialState.stats || { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0 };
+    const fallback = $("materialFallbackEnabled").checked === true ? "参考答案开启" : "参考答案关闭";
+    $("materialSummary").textContent = stats.enabledFolders + "/" + stats.folders + " 个文件夹，" +
+      stats.enabledFiles + "/" + stats.files + " 个文件启用 · " + fallback;
+  }
+
+  function initCollapsibleSections() {
+    document.querySelectorAll(".section-head input, .section-head label").forEach((element) => {
+      element.addEventListener("click", (event) => event.stopPropagation());
+      element.addEventListener("keydown", (event) => event.stopPropagation());
+    });
+  }
+
   function showSaveMessage(text) {
     const msg = $("saveMsg");
     msg.textContent = text;
@@ -447,6 +473,9 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    initCollapsibleSections();
+    updateFreeSearchSummary();
+    updateMaterialSummary();
     loadSettings().catch(() => {});
     loadStats().catch(() => {});
     loadMaterials().catch(() => {});
@@ -455,6 +484,10 @@
     $("refreshModels").addEventListener("click", refreshModels);
     $("clearCache").addEventListener("click", clearCache);
     $("toggleKey").addEventListener("click", toggleKeyVisibility);
+    $("freeSearchEnabled").addEventListener("input", updateFreeSearchSummary);
+    $("freeSearchEnabled").addEventListener("change", updateFreeSearchSummary);
+    $("materialFallbackEnabled").addEventListener("input", updateMaterialSummary);
+    $("materialFallbackEnabled").addEventListener("change", updateMaterialSummary);
     $("importFile").addEventListener("change", handleImportFileChange);
     $("importBtn").addEventListener("click", importQuestionBank);
     $("createFolder").addEventListener("click", createFolder);

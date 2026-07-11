@@ -659,6 +659,253 @@ function testReferenceOnlyAnnotationEscapesHtml() {
   assert.ok(appended[0].innerHTML.includes("&lt;img"));
 }
 
+class MiniElement {
+  constructor(tagName, attrs = {}, children = [], text = "") {
+    this.tagName = tagName.toUpperCase();
+    this.nodeType = 1;
+    this.attributes = { ...attrs };
+    this.id = attrs.id || "";
+    this.className = attrs.class || attrs.className || "";
+    this.hidden = attrs.hidden === true;
+    this.ownText = text;
+    this.parentElement = null;
+    this.children = [];
+    children.forEach((child) => this.appendChild(child));
+  }
+
+  appendChild(child) {
+    child.parentElement = this;
+    child.ownerDocument = this.ownerDocument;
+    this.children.push(child);
+    return child;
+  }
+
+  get textContent() {
+    return this.ownText + this.children.map((child) => child.textContent).join("");
+  }
+
+  set textContent(value) {
+    this.ownText = String(value || "");
+    this.children = [];
+  }
+
+  getAttribute(name) {
+    return this.attributes[name] ?? null;
+  }
+
+  contains(target) {
+    if (this === target) return true;
+    return this.children.some((child) => child.contains(target));
+  }
+
+  remove() {
+    if (!this.parentElement) return;
+    this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+    this.parentElement = null;
+  }
+
+  cloneNode(deep) {
+    const clone = new MiniElement(this.tagName, { ...this.attributes }, [], this.ownText);
+    clone.id = this.id;
+    clone.className = this.className;
+    clone.hidden = this.hidden;
+    if (deep) this.children.forEach((child) => clone.appendChild(child.cloneNode(true)));
+    return clone;
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  querySelectorAll(selector) {
+    const selectors = splitSelectors(selector);
+    const result = [];
+    const visit = (node) => {
+      node.children.forEach((child) => {
+        if (selectors.some((item) => child.matches(item))) result.push(child);
+        visit(child);
+      });
+    };
+    visit(this);
+    return result;
+  }
+
+  closest(selector) {
+    let node = this;
+    while (node) {
+      if (node.matches(selector)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  matches(selector) {
+    return splitSelectors(selector).some((item) => this.matchesOne(item));
+  }
+
+  matchesOne(selector) {
+    const trimmed = selector.trim();
+    if (!trimmed) return false;
+    const tagClass = trimmed.match(/^([a-z0-9_-]+)\.([a-z0-9_-]+)$/i);
+    if (tagClass) return this.tagName.toLowerCase() === tagClass[1].toLowerCase() && hasClass(this, tagClass[2]);
+    const tagAttr = trimmed.match(/^([a-z0-9_-]+)\[([^=\]*]+)(\*?)=(?:"([^"]+)"|'([^']+)'|([^\]]+))\]$/i);
+    if (tagAttr) {
+      return this.tagName.toLowerCase() === tagAttr[1].toLowerCase() &&
+        attrMatches(this, tagAttr[2], tagAttr[3] === "*", tagAttr[4] || tagAttr[5] || tagAttr[6]);
+    }
+    const attr = trimmed.match(/^\[([^=\]*]+)(\*?)=(?:"([^"]+)"|'([^']+)'|([^\]]+))\]$/);
+    if (attr) return attrMatches(this, attr[1], attr[2] === "*", attr[3] || attr[4] || attr[5]);
+    if (trimmed.startsWith(".")) return hasClass(this, trimmed.slice(1));
+    if (trimmed.startsWith("#")) return this.id === trimmed.slice(1);
+    return this.tagName.toLowerCase() === trimmed.toLowerCase();
+  }
+
+  getBoundingClientRect() {
+    return { width: 320, height: 120 };
+  }
+}
+
+class MiniDocument {
+  constructor(children) {
+    this.defaultView = {
+      getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }),
+    };
+    this.body = new MiniElement("body", {}, children);
+    this.body.ownerDocument = this;
+    assignOwner(this.body, this);
+  }
+
+  querySelector(selector) {
+    return this.body.querySelector(selector);
+  }
+
+  querySelectorAll(selector) {
+    return this.body.querySelectorAll(selector);
+  }
+}
+
+function assignOwner(node, doc) {
+  node.ownerDocument = doc;
+  node.children.forEach((child) => assignOwner(child, doc));
+}
+
+function splitSelectors(selector) {
+  return String(selector || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function hasClass(element, className) {
+  return String(element.className || "").split(/\s+/).includes(className);
+}
+
+function attrMatches(element, name, contains, expected) {
+  const value = name === "class" ? element.className : (name === "id" ? element.id : element.getAttribute(name));
+  if (value == null) return false;
+  return contains ? String(value).includes(expected) : String(value) === expected;
+}
+
+function E(tag, attrs, children, text) {
+  return new MiniElement(tag, attrs, children, text);
+}
+
+function input(type) {
+  return E("input", { type }, [], "");
+}
+
+function label(text, type = "radio") {
+  return E("label", {}, [input(type)], text);
+}
+
+function moodleRow(letter, text, type = "radio") {
+  return E("div", { class: "r0" }, [
+    input(type),
+    E("span", { "data-region": "answer-label" }, [
+      E("span", { class: "answernumber" }, [], letter + "."),
+      E("span", {}, [], " " + text),
+    ]),
+  ]);
+}
+
+function loadQuestionExtractor(doc) {
+  const context = {
+    self: { AutoAnswer: {} },
+    document: doc,
+    console,
+  };
+  vm.runInNewContext(read("src/lib/types.js"), context);
+  vm.runInNewContext(read("src/lib/matcher.js"), context);
+  vm.runInNewContext(read("src/content/question-normalizer.js"), context);
+  vm.runInNewContext(read("src/content/question-adapters/moodle.js"), context);
+  vm.runInNewContext(read("src/content/question-adapters/generic-form.js"), context);
+  vm.runInNewContext(read("src/content/question-debug.js"), context);
+  vm.runInNewContext(read("src/content/question-extractor.js"), context);
+  return context.self.AutoAnswer.QuestionExtractor;
+}
+
+function testQuestionExtractorMoodleMetadata() {
+  const doc = new MiniDocument([
+    E("div", { class: "que", id: "q1" }, [
+      E("div", { class: "qtext" }, [], "Alice likes which fruit?"),
+      E("div", { class: "answer" }, [
+        moodleRow("A", "banana"),
+        moodleRow("B", "apple"),
+      ]),
+    ]),
+  ]);
+  const extractor = loadQuestionExtractor(doc);
+  const items = extractor.extract({ document: doc, createId: () => "q_1" });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].question.adapterName, "MoodleQuestionAdapter");
+  assert.equal(items[0].question.type, "choice");
+  assert.equal(items[0].question.options[1], "B. apple");
+  assert.ok(items[0].question.confidence > 0.7);
+  assert.ok(items[0].question.evidence.includes("stem:.qtext"));
+  assert.ok(items[0].question.containerSelector.includes("#q1"));
+}
+
+function testQuestionExtractorGenericFormAndNoise() {
+  const doc = new MiniDocument([
+    E("nav", { class: "quiznavigation" }, [
+      E("fieldset", {}, [
+        E("legend", {}, [], "Question navigation"),
+        label("A. previous"),
+        label("B. next"),
+      ]),
+    ]),
+    E("main", {}, [
+      E("fieldset", { id: "real-question" }, [
+        E("legend", {}, [], "What snack did Alice pack for lab?"),
+        label("A. apple slices"),
+        label("B. orange soda"),
+        label("C. pear cake"),
+      ]),
+    ]),
+  ]);
+  const extractor = loadQuestionExtractor(doc);
+  const items = extractor.extract({ document: doc, createId: () => "q_generic" });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].question.adapterName, "GenericFormQuestionAdapter");
+  assert.equal(items[0].question.options.length, 3);
+  assert.match(items[0].question.stemText, /Alice/);
+  assert.equal(items[0].question.containerSelector, "#real-question");
+}
+
+function testQuestionExtractorDedupesNestedCandidates() {
+  const doc = new MiniDocument([
+    E("section", { class: "question-card" }, [
+      E("fieldset", { id: "nested-question" }, [
+        E("legend", {}, [], "Which color label was on Alice's reading kit?"),
+        label("A. crimson"),
+        label("B. turquoise"),
+      ]),
+    ]),
+  ]);
+  const extractor = loadQuestionExtractor(doc);
+  const items = extractor.extract({ document: doc, createId: () => "q_nested" });
+  assert.equal(items.length, 1);
+  assert.ok(items[0].question.confidence >= 0.5);
+  assert.ok(items[0].question.evidence.length > 0);
+}
+
 function testDisableClearsAnnotations() {
   let runtimeListener;
   let removed = 0;
@@ -769,6 +1016,9 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testQuestionConcurrencyLimit();
   testMultipleChoiceAnnotationAndEscaping();
   testReferenceOnlyAnnotationEscapesHtml();
+  testQuestionExtractorMoodleMetadata();
+  testQuestionExtractorGenericFormAndNoise();
+  testQuestionExtractorDedupesNestedCandidates();
   testDisableClearsAnnotations();
   testMutationDuringCooldownSchedulesDeferredScan();
   console.log("All extension regression tests passed");
