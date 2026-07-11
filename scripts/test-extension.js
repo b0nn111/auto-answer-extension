@@ -133,6 +133,7 @@ function createBackground(config) {
     importScripts() {},
     console,
   };
+  vm.runInNewContext(read("src/lib/local-ranker.js"), context);
   vm.runInNewContext(read("src/lib/material-answerer.js"), context);
   vm.runInNewContext(read("src/background/service-worker.js"), context);
   return {
@@ -204,12 +205,40 @@ async function testMaterialRetrieverUsesQuestionAliases() {
     },
   ];
   const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/local-ranker.js"), context);
   vm.runInNewContext(read("src/lib/material-retriever.js"), context);
   const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
     "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
     ["A. banana", "B. apple", "C. peach", "D. pear"]
   );
   assert.equal(refs[0].text, chunks[1].text);
+}
+
+async function testLocalRankerReranksMaterialEvidence() {
+  const chunks = [
+    {
+      folderName: "Alice",
+      fileName: "noise.txt",
+      text: "Alice copied a red apple drawing after class. It was not her favorite fruit.",
+      paragraphStart: 1,
+    },
+    {
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit: apple",
+      paragraphStart: 2,
+    },
+  ];
+  const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/local-ranker.js"), context);
+  vm.runInNewContext(read("src/lib/material-retriever.js"), context);
+  const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
+    "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+    ["A. banana", "B. apple", "C. peach", "D. pear"]
+  );
+  assert.equal(refs[0].fileName, "facts.csv");
+  assert.ok(refs[0].rankerScore > 0);
+  assert.ok(refs[0].rankerEvidence.length > 0);
 }
 
 async function testMaterialParserHelpers() {
@@ -269,6 +298,35 @@ async function testMaterialChoiceAnswerFromServiceWorker() {
   assert.equal(results[0].candidates[0].sourceLabel, "\u672c\u5730\u8d44\u6599\u53c2\u8003");
   assert.match(results[0].warning, /\u672c\u5730\u8d44\u6599/);
   assert.equal(results[0].materials.length, 1);
+}
+
+async function testMaterialAnswerIncludesRankerEvidence() {
+  const background = createBackground({
+    materials: [{
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit: apple",
+      citation: "Alice / facts.csv / Row 1",
+      score: 0.72,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{
+      id: "q1",
+      type: "choice",
+      questionText: "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+      options: ["A. banana", "B. apple", "C. peach", "D. pear"],
+    }],
+  });
+  assert.equal(results[0].answer, "B. apple");
+
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  const answerLog = exported.entries.find((entry) => entry.event === "material_answer" && entry.questionId === "q1");
+  assert.ok(answerLog);
+  const appleScore = answerLog.scores.find((item) => item.letter === "B");
+  assert.ok(appleScore.rankerScore > 0);
+  assert.ok(appleScore.rankerEvidence.length > 0);
 }
 
 async function testMaterialFillAnswerFromServiceWorker() {
@@ -342,7 +400,7 @@ async function testMaterialAliceSamplePageMojibakeQuestions() {
 
   const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
   const q1Scores = exported.entries.find((entry) => entry.event === "material_answer" && entry.questionId === "q_1")?.scores || [];
-  assert.ok(q1Scores.some((item) => item.letter === "B" && item.score > 0.9));
+  assert.ok(q1Scores.some((item) => item.letter === "B" && item.score > 0.55 && item.rankerScore > 0));
 }
 
 async function testMaterialAnswerIsFallbackWhenAiSucceeds() {
@@ -1002,8 +1060,10 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testConsensusAndMetrics();
   testMaterialCitationFormatting();
   await testMaterialRetrieverUsesQuestionAliases();
+  await testLocalRankerReranksMaterialEvidence();
   await testMaterialParserHelpers();
   await testMaterialChoiceAnswerFromServiceWorker();
+  await testMaterialAnswerIncludesRankerEvidence();
   await testMaterialFillAnswerFromServiceWorker();
   await testMaterialAliceMixedLanguageQuestions();
   await testMaterialAliceSamplePageMojibakeQuestions();

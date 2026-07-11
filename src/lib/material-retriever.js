@@ -18,9 +18,9 @@
         .map((chunk) => ({ chunk, score: scoreChunk(searchableChunkText(chunk), query, queryTokens) }))
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 8);
+        .slice(0, 24);
 
-      return scored.map((item) => ({
+      const materials = scored.map((item) => ({
         folderId: item.chunk.folderId,
         folderName: item.chunk.folderName,
         fileId: item.chunk.fileId,
@@ -36,6 +36,11 @@
         citation: formatCitation(item.chunk),
         score: Number(item.score.toFixed(4)),
       }));
+      const ranker = root.AutoAnswer.LocalRanker;
+      const ranked = ranker && typeof ranker.rerank === "function"
+        ? ranker.rerank(questionText, options, materials)
+        : materials;
+      return ranked.slice(0, 8);
     },
     formatCitation,
   };

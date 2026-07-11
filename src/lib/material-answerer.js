@@ -33,8 +33,23 @@
 
   function answerChoice(q, refs) {
     const queryTokens = queryTokenSet(q.questionText);
+    const rankerScores = root.AutoAnswer.LocalRanker?.rankOptions
+      ? root.AutoAnswer.LocalRanker.rankOptions(q, refs)
+      : [];
+    const rankerByLetter = new Map(rankerScores.map((item) => [item.letter, item]));
     const scored = q.options
-      .map((option, index) => scoreOption(option, index, q, refs, queryTokens))
+      .map((option, index) => {
+        const base = scoreOption(option, index, q, refs, queryTokens);
+        const ranker = rankerByLetter.get(base.letter);
+        if (!ranker) return base;
+        return {
+          ...base,
+          score: clampScore(base.score * 0.68 + ranker.rankerScore * 0.32),
+          rankerScore: ranker.rankerScore,
+          rankerEvidence: ranker.rankerEvidence || [],
+          materials: uniqueMaterials([...(base.materials || []), ...(ranker.materials || [])]),
+        };
+      })
       .sort((a, b) => b.score - a.score);
     const best = scored[0];
     const second = scored[1] || { score: 0 };
@@ -111,7 +126,7 @@
         const tokens = tokenize(sentence);
         const overlap = tokenOverlap(queryTokens, tokens);
         const keyValue = keyValueAnswer(sentence, queryTokens);
-        const score = Number(ref.score || 0) * 0.25 + overlap * 0.55 + (keyValue ? 0.2 : 0);
+        const score = Number(ref.score || 0) * 0.16 + Number(ref.rankerScore || 0) * 0.16 + overlap * 0.48 + (keyValue ? 0.2 : 0);
         const answer = keyValue || compactAnswer(sentence, q.questionText);
         if (answer && (!best || score > best.score)) {
           best = { answer, score, ref };
@@ -371,11 +386,17 @@
     return Math.max(0.2, Math.min(0.78, Number(value || 0.45)));
   }
 
+  function clampScore(value) {
+    return Math.max(0, Math.min(1, Number(value || 0)));
+  }
+
   function summarizeScores(items) {
     return (items || []).map((item) => ({
       letter: item.letter,
       optionText: item.optionText,
       score: Number(item.score.toFixed(4)),
+      rankerScore: Number(item.rankerScore || 0),
+      rankerEvidence: item.rankerEvidence || [],
     }));
   }
 

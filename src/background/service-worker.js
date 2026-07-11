@@ -4,6 +4,7 @@
   "../lib/answer-normalizer.js",
   "../lib/db.js",
   "../lib/material-db.js",
+  "../lib/local-ranker.js",
   "../lib/material-retriever.js",
   "../lib/material-answerer.js",
   "../lib/websearch.js",
@@ -568,6 +569,8 @@
     return (materials || []).slice(0, 5).map((item) => ({
       citation: sanitizeText(item.citation || [item.folderName, item.fileName].filter(Boolean).join(" / "), 120),
       score: Number(item.score || 0),
+      rankerScore: Number(item.rankerScore || 0),
+      rankerEvidence: Array.isArray(item.rankerEvidence) ? item.rankerEvidence.slice(0, 4) : [],
       pageNumber: item.pageNumber || null,
     }));
   }
@@ -588,6 +591,8 @@
         letter: item.letter,
         optionText: sanitizeText(item.optionText, 60),
         score: Number(item.score || 0),
+        rankerScore: Number(item.rankerScore || 0),
+        rankerEvidence: Array.isArray(item.rankerEvidence) ? item.rankerEvidence.slice(0, 4) : [],
       }))
       : [];
   }

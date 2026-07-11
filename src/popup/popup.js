@@ -2,7 +2,7 @@
   const hasChromeApi = typeof chrome !== "undefined" && chrome.runtime && chrome.storage;
   const manifest = hasChromeApi && chrome.runtime.getManifest
     ? chrome.runtime.getManifest()
-    : { version: "1.4.4" };
+    : { version: "1.4.5" };
   const versionEl = document.getElementById("version");
   if (versionEl) versionEl.textContent = "v" + manifest.version;
 
