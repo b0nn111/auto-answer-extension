@@ -164,6 +164,37 @@ async function testConsensusAndMetrics() {
   assert.equal(diagnostic.sourceMetrics.cache.misses, 1);
 }
 
+function testMaterialCitationFormatting() {
+  const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => [] } } } };
+  vm.runInNewContext(read("src/lib/material-retriever.js"), context);
+  const citation = context.self.AutoAnswer.MaterialRetriever.formatCitation({
+    folderName: "Calculus",
+    fileName: "Lecture 1.pdf",
+    pageNumber: 3,
+  });
+  assert.equal(citation, "Calculus / Lecture 1.pdf / \u7b2c3\u9875");
+}
+
+async function testReferenceOnlyFromServiceWorker() {
+  const background = createBackground({
+    materials: [{
+      folderName: "Calculus",
+      fileName: "Lecture 1.pdf",
+      text: "Derivative measures instantaneous rate of change.",
+      citation: "Calculus / Lecture 1.pdf / \u7b2c3\u9875",
+      pageNumber: 3,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{ id: "q1", type: "short_answer", questionText: "What does a derivative measure?" }],
+  });
+  assert.equal(results[0].referenceOnly, true);
+  assert.equal(results[0].answer, "");
+  assert.equal(results[0].source, "material");
+  assert.equal(results[0].materials.length, 1);
+}
+
 async function testConflictWarning() {
   const background = createBackground({
     freeEnabled: true,
@@ -291,6 +322,42 @@ function testMultipleChoiceAnnotationAndEscaping() {
   assert.equal(longInserted.includes("..."), false);
 }
 
+function testReferenceOnlyAnnotationEscapesHtml() {
+  const { context } = loadNormalizer();
+  context.self.AutoAnswer.Types = {};
+  const created = [];
+  context.document = {
+    getElementById: () => ({}),
+    createElement: (tag) => {
+      const element = {
+        tag,
+        className: "",
+        innerHTML: "",
+        textContent: "",
+        appendChild(child) { this.children = (this.children || []).concat(child); },
+        addEventListener() {},
+      };
+      created.push(element);
+      return element;
+    },
+  };
+  vm.runInNewContext(read("src/content/annotator.js"), context);
+  const appended = [];
+  const container = { appendChild: (node) => appended.push(node) };
+  context.self.AutoAnswer.Annotator.annotateReferenceOnly(container, {
+    questionStem: '<img src=x onerror="alert(1)">',
+    materials: [{
+      citation: 'Folder / <script>alert(1)</script>',
+      text: '<img src=x onerror="alert(2)"> useful excerpt',
+    }],
+  });
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].innerHTML.includes("<script>"), false);
+  assert.equal(appended[0].innerHTML.includes("<img"), false);
+  assert.ok(appended[0].innerHTML.includes("&lt;script&gt;"));
+  assert.ok(appended[0].innerHTML.includes("&lt;img"));
+}
+
 function testDisableClearsAnnotations() {
   let runtimeListener;
   let removed = 0;
@@ -385,9 +452,12 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testPublicSearchUsesSharedNormalizer();
   await testExactMatchSkipsFuzzySearch();
   await testConsensusAndMetrics();
+  testMaterialCitationFormatting();
+  await testReferenceOnlyFromServiceWorker();
   await testConflictWarning();
   await testQuestionConcurrencyLimit();
   testMultipleChoiceAnnotationAndEscaping();
+  testReferenceOnlyAnnotationEscapesHtml();
   testDisableClearsAnnotations();
   testMutationDuringCooldownSchedulesDeferredScan();
   console.log("All extension regression tests passed");

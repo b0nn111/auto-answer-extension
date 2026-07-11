@@ -60,6 +60,22 @@
       .aa-candidate-source { font-weight:700; color:#374151; }
       .aa-candidate-meta { color:#64748b; font-size:12px; margin-left:4px; }
       .aa-candidate-answer { margin-top:2px; white-space:pre-wrap; }
+      .aa-reference-note {
+        margin-top:6px; padding:8px 10px; font-size:13px; color:#334155;
+        background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px;
+        line-height:1.5;
+      }
+      .aa-reference-list { margin-top:6px; display:grid; gap:6px; }
+      .aa-reference-item {
+        padding:7px 9px; background:#ffffff; border:1px solid #e2e8f0;
+        border-radius:6px;
+      }
+      .aa-reference-citation { font-weight:700; color:#0f172a; overflow-wrap:anywhere; }
+      .aa-reference-excerpt {
+        margin-top:3px; color:#475569; white-space:pre-wrap; overflow-wrap:anywhere;
+      }
+      .aa-reference-details { margin-top:6px; color:#334155; }
+      .aa-reference-details summary { cursor:pointer; color:#475569; font-size:12px; }
       .aa-highlight-option { outline:2px solid #22c55e; outline-offset:2px; border-radius:4px; background:#f0fdf4; }
     `;
     document.head.appendChild(style);
@@ -222,6 +238,16 @@
     container.appendChild(body);
   }
 
+  function annotateReferenceOnly(container, result) {
+    injectStyles();
+    const materials = Array.isArray(result.materials) ? result.materials : [];
+    const note = document.createElement("div");
+    note.className = "aa-reference-note";
+    note.innerHTML = '<strong>' + t("localReferences") + '</strong>' + stemTip(result) +
+      '<div class="aa-reference-list">' + renderReferenceItems(materials) + '</div>';
+    container.appendChild(note);
+  }
+
   function markFailed(container, result) {
     injectStyles();
     const reason = formatFailedReason(result);
@@ -253,12 +279,65 @@
       const pct = typeof item.confidence === "number" ? Math.round(item.confidence * 100) + "%" : "";
       const agreement = item.consensusCount > 1 ? " · " + item.consensusCount + " 个来源一致" : "";
       const warning = item.warning ? " · " + item.warning : "";
+      const references = renderMaterialsDetails(item.materials);
       return '<div class="aa-candidate">' +
         '<div><span class="aa-candidate-source">' + escapeHtml(title) + '</span>' +
         '<span class="aa-candidate-meta">' + escapeHtml(pct + agreement + warning) + '</span></div>' +
         '<div class="aa-candidate-answer">' + escapeHtml(item.answer || "(空)") + '</div>' +
+        references +
         '</div>';
     }).join("");
+  }
+
+  function renderMaterialsDetails(materials) {
+    if (!Array.isArray(materials) || !materials.length) return "";
+    return '<details class="aa-reference-details">' +
+      '<summary>' + escapeHtml(t("showReferences")) + '</summary>' +
+      '<div class="aa-reference-list">' + renderReferenceItems(materials) + '</div>' +
+      '</details>';
+  }
+
+  function renderReferenceItems(materials) {
+    if (!materials.length) {
+      return '<div class="aa-reference-item">' + escapeHtml(t("noReferenceExcerpt")) + '</div>';
+    }
+    return materials.slice(0, 5).map((item) => {
+      const citation = item.citation || buildCitation(item);
+      const excerpt = makeExcerpt(item.markdown || item.text || "");
+      return '<div class="aa-reference-item">' +
+        '<div class="aa-reference-citation">' + escapeHtml(citation) + '</div>' +
+        '<div class="aa-reference-excerpt">' + escapeHtml(excerpt || t("noReferenceExcerpt")) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function buildCitation(item) {
+    const parts = [
+      item.folderName || t("materialLibrary"),
+      item.fileName || t("unnamedMaterial"),
+    ];
+    if (Number.isFinite(item.pageNumber)) {
+      parts.push(t("pagePrefix") + item.pageNumber + t("pageSuffix"));
+    } else if (Array.isArray(item.headingPath) && item.headingPath.length) {
+      parts.push(item.headingPath.join(" > "));
+    } else if (Number.isFinite(item.paragraphStart)) {
+      const end = Number.isFinite(item.paragraphEnd) ? item.paragraphEnd : item.paragraphStart;
+      parts.push(end > item.paragraphStart
+        ? t("paragraphPrefix") + item.paragraphStart + "-" + end + t("paragraphSuffix")
+        : t("paragraphPrefix") + item.paragraphStart + t("paragraphSuffix"));
+    }
+    return parts.join(" / ");
+  }
+
+  function makeExcerpt(text) {
+    const clean = String(text || "")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+      .replace(/[*_~`>|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return clean.length > 220 ? clean.slice(0, 220) + "..." : clean;
   }
 
   function stemTip(result) {
@@ -289,6 +368,20 @@
     }[source] || source || "未知来源";
   }
 
+  function t(key) {
+    return {
+      localReferences: "\u672c\u5730\u8d44\u6599\u53ef\u80fd\u76f8\u5173\uff0c\u4ec5\u4f5c\u53c2\u8003\uff1a",
+      showReferences: "\u67e5\u770b\u8d44\u6599\u5f15\u7528",
+      noReferenceExcerpt: "\u672a\u63d0\u53d6\u5230\u53ef\u9884\u89c8\u7684\u7247\u6bb5",
+      materialLibrary: "\u8d44\u6599\u5e93",
+      unnamedMaterial: "\u672a\u547d\u540d\u8d44\u6599",
+      pagePrefix: "\u7b2c ",
+      pageSuffix: " \u9875",
+      paragraphPrefix: "\u7b2c ",
+      paragraphSuffix: " \u6bb5",
+    }[key] || key;
+  }
+
   function jaccardSimple(a, b) {
     const setA = new Set(a.split(""));
     const setB = new Set(b.split(""));
@@ -298,7 +391,7 @@
     return union === 0 ? 0 : inter / union;
   }
 
-  root.AutoAnswer.Annotator = { annotateChoice, annotateFill, annotateText, markFailed };
+  root.AutoAnswer.Annotator = { annotateChoice, annotateFill, annotateText, annotateReferenceOnly, markFailed };
 })();
 
 

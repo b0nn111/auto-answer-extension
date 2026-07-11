@@ -215,7 +215,20 @@
         displayAsText: best.displayAsText === true,
         warning: best.warning,
         questionStem: q.stemText || q.questionText,
+        materials: best.materials || [],
         candidates: ranked,
+      };
+    }
+    if (materialContext.length > 0) {
+      return {
+        id: q.id,
+        type: q.type,
+        answer: "",
+        source: Types.ANSWER_SOURCE.MATERIAL,
+        confidence: 0,
+        referenceOnly: true,
+        materials: materialContext,
+        questionStem: q.stemText || q.questionText,
       };
     }
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };

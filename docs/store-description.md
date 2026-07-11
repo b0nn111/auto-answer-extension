@@ -35,7 +35,8 @@
 ### 技术支持
 
 - 支持 Chrome 和 Edge 浏览器。
-- 当前版本：1.2.1
+- 当前版本：1.3.0
+- 1.3.0 adds local PDF/DOCX parsing for the material library. Parsed documents stay local; the extension stores extracted text/Markdown chunks and citations, not the original files.
 - 测试环境：XJTLU Moodle Quiz 页面。
 - 如有问题或改进建议，请加 QQ：3923636786。
 

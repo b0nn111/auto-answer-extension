@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const { Types, DB, Ollama, AiApi } = self.AutoAnswer;
+  const { Types, DB, MaterialDB, Ollama, AiApi } = self.AutoAnswer;
   const $ = (id) => document.getElementById(id);
 
   let importFileData = null;
@@ -158,10 +158,12 @@
   }
 
   function renderFile(file) {
+    const format = ({ pdf: "PDF", docx: "DOCX", text: "文本" })[file.format] || "文本";
+    const location = file.pageCount ? " · " + file.pageCount + " 页" : "";
     return [
       '<div class="material-file" data-file-id="' + escapeAttr(file.id) + '">',
       '  <label class="inline-check"><input type="checkbox" data-action="toggle-file" ' + (file.enabled ? "checked" : "") + "> " + escapeHtml(file.name) + "</label>",
-      '  <span class="file-meta">' + file.chunkCount + " 片段 · " + formatSize(file.size) + "</span>",
+      '  <span class="file-meta">' + format + location + " · " + file.chunkCount + " 片段 · " + formatSize(file.size) + "</span>",
       '  <button class="link-danger" data-action="delete-file">删除</button>',
       "</div>",
     ].join("");
@@ -229,42 +231,101 @@
       return;
     }
 
+    const uploadButton = $("uploadMaterials");
+    const queue = files.map((file) => ({ file, state: "waiting", detail: "等待中" }));
+    renderMaterialImportQueue(queue);
+    uploadButton.disabled = true;
+
     let success = 0;
     let skipped = 0;
-    for (const file of files) {
-      const text = await readSupportedTextFile(file).catch(() => "");
-      if (!text.trim()) {
-        skipped++;
-        continue;
+    let failed = 0;
+    try {
+      const parser = await waitForMaterialParser();
+      for (const item of queue) {
+        const file = item.file;
+        const existing = await MaterialDB.findFileByName(folderId, file.name);
+        if (existing && !confirm("“" + file.name + "”已存在于这个文件夹。是否替换？")) {
+          item.state = "skipped";
+          item.detail = "已跳过";
+          skipped++;
+          renderMaterialImportQueue(queue);
+          continue;
+        }
+
+        try {
+          await ensureStorageCapacity(file);
+          item.state = "parsing";
+          item.detail = "解析中";
+          renderMaterialImportQueue(queue);
+          const document = await parser.parseFile(file);
+
+          item.state = "indexing";
+          item.detail = "建立索引";
+          renderMaterialImportQueue(queue);
+          await MaterialDB.addDocument(
+            folderId,
+            { name: file.name, type: file.type, size: file.size },
+            document,
+            { replaceFileId: existing?.id || "" }
+          );
+          item.state = "done";
+          item.detail = document.pageCount ? "完成 · " + document.pageCount + " 页" : "完成";
+          success++;
+        } catch (error) {
+          item.state = "error";
+          item.detail = error?.message || "导入失败";
+          failed++;
+        }
+        renderMaterialImportQueue(queue);
       }
-      const response = await chrome.runtime.sendMessage({
-        type: Types.MSG_TYPE.MATERIAL_ADD_FILE,
-        folderId,
-        file: { name: file.name, type: file.type, size: file.size },
-        text,
+    } catch (error) {
+      queue.forEach((item) => {
+        if (item.state === "waiting") {
+          item.state = "error";
+          item.detail = error?.message || "解析器加载失败";
+          failed++;
+        }
       });
-      if (response && response.ok) success++;
-      else skipped++;
+      renderMaterialImportQueue(queue);
+    } finally {
+      uploadButton.disabled = false;
     }
 
     $("materialFiles").value = "";
-    showMaterialStatus("上传完成：成功 " + success + " 个，跳过 " + skipped + " 个", success ? "ok" : "err");
+    const detail = ["成功 " + success + " 个"];
+    if (skipped) detail.push("跳过 " + skipped + " 个");
+    if (failed) detail.push("失败 " + failed + " 个");
+    showMaterialStatus("导入完成：" + detail.join("，"), success ? "ok" : "err");
     await loadMaterials();
   }
 
-  function readSupportedTextFile(file) {
-    const name = file.name.toLowerCase();
-    const supported = /\.(txt|md|markdown|json|csv|tsv|html|htm|xml|js|ts|jsx|tsx|py|java|c|cpp|h|hpp|cs|go|rs|php|rb|sql|yaml|yml|ini|log)$/i.test(name) ||
-      /^text\//.test(file.type) ||
-      file.type === "application/json" ||
-      file.type === "application/xml";
-    if (!supported) return Promise.resolve("");
+  function renderMaterialImportQueue(items) {
+    $("materialImportQueue").innerHTML = items.map((item) =>
+      '<div class="material-import-item" data-state="' + escapeAttr(item.state) + '">' +
+      '<span class="material-import-name">' + escapeHtml(item.file.name) + '</span>' +
+      '<span class="material-import-state">' + escapeHtml(item.detail) + '</span>' +
+      '</div>'
+    ).join("");
+  }
+
+  function waitForMaterialParser() {
+    if (self.AutoAnswer.MaterialParser) return Promise.resolve(self.AutoAnswer.MaterialParser);
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => resolve(String(event.target.result || ""));
-      reader.onerror = () => reject(reader.error || new Error("File read failed"));
-      reader.readAsText(file, "utf-8");
+      const timer = setTimeout(() => reject(new Error("本地文档解析器加载失败，请重新打开设置页")), 10000);
+      self.addEventListener("auto-answer-material-parser-ready", () => {
+        clearTimeout(timer);
+        resolve(self.AutoAnswer.MaterialParser);
+      }, { once: true });
     });
+  }
+
+  async function ensureStorageCapacity(file) {
+    if (!navigator.storage?.estimate) return;
+    const estimate = await navigator.storage.estimate();
+    const available = Number(estimate.quota || 0) - Number(estimate.usage || 0);
+    if (available > 0 && Number(file.size || 0) > available) {
+      throw new Error("浏览器本地存储空间不足，请先删除部分资料");
+    }
   }
 
   function handleImportFileChange(e) {

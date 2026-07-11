@@ -178,6 +178,40 @@ input:focus, select:focus {
 .status.ok { color: #22c55e; }
 .status.err { color: #dc2626; }
 
+.material-import-queue {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.material-import-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+.material-import-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #374151;
+}
+
+.material-import-state { color: #6b7280; white-space: nowrap; }
+.material-import-item[data-state="done"] .material-import-state { color: #15803d; }
+.material-import-item[data-state="error"] .material-import-state { color: #dc2626; white-space: normal; text-align: right; }
+.material-import-item[data-state="skipped"] .material-import-state { color: #a16207; }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .material-stats {
   display: flex;
   flex-wrap: wrap;
@@ -331,7 +365,8 @@ input:focus, select:focus {
 
 @media (max-width: 560px) {
   .material-create,
-  .material-file {
+  .material-file,
+  .material-import-item {
     grid-template-columns: 1fr;
   }
 

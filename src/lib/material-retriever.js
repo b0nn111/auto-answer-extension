@@ -15,7 +15,7 @@
       if (!queryTokens.length) return [];
 
       const scored = chunks
-        .map((chunk) => ({ chunk, score: scoreChunk(chunk.text, query, queryTokens) }))
+        .map((chunk) => ({ chunk, score: scoreChunk(searchableChunkText(chunk), query, queryTokens) }))
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5);
@@ -27,10 +27,42 @@
         fileName: item.chunk.fileName,
         index: item.chunk.index,
         text: item.chunk.text,
+        markdown: item.chunk.markdown || item.chunk.text,
+        locatorType: item.chunk.locatorType || "paragraph",
+        pageNumber: Number.isFinite(item.chunk.pageNumber) ? item.chunk.pageNumber : null,
+        headingPath: Array.isArray(item.chunk.headingPath) ? item.chunk.headingPath : [],
+        paragraphStart: Number.isFinite(item.chunk.paragraphStart) ? item.chunk.paragraphStart : null,
+        paragraphEnd: Number.isFinite(item.chunk.paragraphEnd) ? item.chunk.paragraphEnd : null,
+        citation: formatCitation(item.chunk),
         score: Number(item.score.toFixed(4)),
       }));
     },
+    formatCitation,
   };
+
+  function searchableChunkText(chunk) {
+    return [
+      chunk.folderName,
+      chunk.fileName,
+      ...(Array.isArray(chunk.headingPath) ? chunk.headingPath : []),
+      chunk.text,
+    ].filter(Boolean).join("\n");
+  }
+
+  function formatCitation(chunk) {
+    const parts = [String(chunk.folderName || "资料库"), String(chunk.fileName || "未命名资料")];
+    if (Number.isFinite(chunk.pageNumber)) {
+      parts.push("第" + chunk.pageNumber + "页");
+    } else if (Array.isArray(chunk.headingPath) && chunk.headingPath.length) {
+      parts.push(chunk.headingPath.join(" > "));
+    } else if (Number.isFinite(chunk.paragraphStart)) {
+      const end = Number.isFinite(chunk.paragraphEnd) ? chunk.paragraphEnd : chunk.paragraphStart;
+      parts.push(end > chunk.paragraphStart
+        ? "第" + chunk.paragraphStart + "-" + end + "段"
+        : "第" + chunk.paragraphStart + "段");
+    }
+    return parts.join(" / ");
+  }
 
   function buildQuery(questionText, options) {
     const optionText = Array.isArray(options) ? options.join("\n") : "";

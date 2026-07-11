@@ -317,6 +317,10 @@
     results.forEach((r) => {
       const el = elementMap.get(r.id);
       if (!el) return;
+      if (r.referenceOnly) {
+        Annotator.annotateReferenceOnly(el, r);
+        return;
+      }
       if (r.displayAsText) {
         Annotator.annotateText(el, r);
         return;

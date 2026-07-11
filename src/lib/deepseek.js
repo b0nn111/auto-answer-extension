@@ -108,7 +108,8 @@
   }
 
   function formatContextForPrompt(item, index) {
-    return (index + 1) + ". [" + item.folderName + " / " + item.fileName + "]\n" + item.text;
+    const citation = item.citation || [item.folderName, item.fileName].filter(Boolean).join(" / ");
+    return (index + 1) + ". [" + citation + "]\n" + item.text;
   }
 })();
 

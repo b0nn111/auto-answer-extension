@@ -46,7 +46,7 @@ function New-ExtensionPackage {
     Remove-Item -LiteralPath $zipPath -Force
   }
 
-  $items = @("manifest.json", "src", "icons", "README.md", "docs")
+  $items = @("manifest.json", "src", "icons", "vendor", "README.md", "docs")
   $existing = foreach ($item in $items) {
     $path = Join-Path $Root $item
     if (Test-Path -LiteralPath $path) { $path }

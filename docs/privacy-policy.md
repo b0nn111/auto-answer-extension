@@ -1,6 +1,6 @@
 # Privacy Policy for 自动答题助手 (Auto Answer Helper)
 
-**Last updated:** 2026-07-06
+**Last updated:** 2026-07-10
 
 ## Data Collection
 
@@ -16,7 +16,7 @@ This extension may process the following data from quiz or question pages:
 The data is used only to provide the extension's answer-assistance features:
 
 1. **Local question bank**: only question-answer pairs manually imported by the user are stored in the browser's IndexedDB. Answered page questions are not saved automatically.
-2. **Local material library**: uploaded study materials are stored locally and searched only when their folder or file is enabled.
+2. **Local material library**: uploaded study materials are parsed locally in the browser. The extension stores extracted text/Markdown chunks and citation metadata, and searches them only when their folder or file is enabled.
 3. **Free question-search source**: if the user enables the free search option, question text is sent to the configured public search endpoint.
 4. **Local AI**: if the user configures a local AI service, question text and enabled material snippets may be sent to that configured local endpoint.
 5. **AI API**: if the user configures an API key and endpoint, question text and enabled material snippets may be sent to that configured AI API.
@@ -24,7 +24,7 @@ The data is used only to provide the extension's answer-assistance features:
 ## Data Storage
 
 - Question-answer pairs manually imported by the user are stored in browser IndexedDB; answered page questions are not archived automatically.
-- User-uploaded material folders, files, and text chunks are stored in browser IndexedDB.
+- User-uploaded material folders, file records, extracted text/Markdown chunks, and citation metadata are stored in browser IndexedDB. Original PDF/DOCX files are not retained after parsing.
 - The local question-bank limit is 10,000 entries.
 - Users can clear the local question bank from the settings page.
 - Users can delete local material folders and files from the settings page.
