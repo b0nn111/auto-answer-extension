@@ -1,0 +1,25 @@
+{
+  "packet": "non-objective-rag-v145",
+  "records": [
+    {
+      "id": "alice-drawer",
+      "fact": "Alice put 苹果干 in the 蓝色抽屉."
+    },
+    {
+      "id": "mina-lamp",
+      "fact": "请把灯留给晚归的人"
+    },
+    {
+      "id": "noah-tape",
+      "fact": "去码头归还错拿的录音带"
+    },
+    {
+      "id": "station-kit",
+      "fact": "黄铜指南针 and 备用相机电池 only."
+    },
+    {
+      "id": "theo-box",
+      "fact": "锁扣背面的三颗星刻痕"
+    }
+  ]
+}

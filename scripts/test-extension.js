@@ -117,14 +117,20 @@ function createBackground(config) {
     } },
     chrome: {
       storage: {
-        sync: { get: async () => ({
-          freeSearchEnabled: config.freeEnabled === true,
-          aiApiKey: config.aiEnabled === true ? "test-key" : "",
-          materialFallbackEnabled: config.materialFallbackEnabled === false ? false : true,
-          materialFallbackMinConfidence: config.materialFallbackMinConfidence,
-        }) },
+        sync: {
+          get: async () => ({
+            freeSearchEnabled: config.freeEnabled === true,
+            aiApiKey: config.aiEnabled === true ? "test-key" : "",
+            materialFallbackEnabled: config.materialFallbackEnabled === false ? false : true,
+            materialFallbackMinConfidence: config.materialFallbackMinConfidence,
+          }),
+          remove: async () => {},
+        },
         local: {
-          get: async (key) => key ? { [key]: localStore[key] } : { ...localStore },
+          get: async (key) => {
+            if (Array.isArray(key)) return Object.fromEntries(key.map((name) => [name, localStore[name]]));
+            return key ? { [key]: localStore[key] } : { ...localStore };
+          },
           set: async (value) => { Object.assign(localStore, value); },
         },
       },
@@ -377,6 +383,56 @@ async function testMaterialAliceMixedLanguageQuestions() {
   assert.equal(results[4].answer, "B. turquoise label");
 }
 
+async function testMaterialNonObjectiveV145FallbackCases() {
+  const materialText = [
+    "Bao 给旧城地图夹左上角系了灰色棉线，又在封套背面别了绿色回形针。小月亮贴纸和红色蜡封属于临摹地图，不要混放。",
+    "Noah 在长信里解释：他发现自己拿走了码头采访用的录音带，所以缺席周五排练并去码头归还。",
+    "雨棚会议纪要删除了三卷蓝色胶带和折叠茶壶，只保留黄铜指南针与备用相机电池去旧车站。",
+    "温室借阅表反复写着：请把灯留给晚归的人。",
+    "Clara 说最后一页总能把人带回正确章节，所以把它叫作“迷路索引”。",
+    "<p>Alice 没把银色书签交给馆长，因为资料说明书签不是普通失物，而是 Mina 借温室玻璃钥匙时留下的确认物。Alice 担心馆长会按失物流转锁进办公室，因此先把书签交给 Mina。</p>",
+  ].join("\n");
+  const background = createBackground({
+    materials: [{ folderName: "默认文件夹", fileName: "v145-samples", text: materialText, citation: "默认文件夹 / v145-samples", score: 0.72, rankerScore: 0.62 }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [
+      {
+        id: "q2",
+        type: "choice",
+        multiple: true,
+        questionText: "资料中提到，Bao 为了避免大家把资料放错，给旧城地图夹贴了哪两个标记？",
+        options: ["A. 灰色棉线", "B. 小月亮贴纸", "C. 红色蜡封", "D. 绿色回形针"],
+      },
+      {
+        id: "q4",
+        type: "choice",
+        questionText: "资料里的长信说明，Noah 没有参加周五排练的真实原因是什么？",
+        options: ["A. 他忘记了排练时间", "B. 他去码头归还错拿的录音带", "C. 他在图书馆修电脑", "D. 他临时替别人上课"],
+      },
+      {
+        id: "q5",
+        type: "choice",
+        multiple: true,
+        questionText: "根据资料《雨棚会议纪要》，团队最终决定周末只带哪些物品去旧车站？",
+        options: ["A. 黄铜指南针", "B. 三卷蓝色胶带", "C. 备用相机电池", "D. 折叠茶壶"],
+      },
+      { id: "q3", type: "fill", questionText: "《温室借阅表》里说，Mina 每次借走玻璃钥匙后都会写下同一句话：“请把灯留给____。”" },
+      { id: "q6", type: "fill", questionText: "资料中 Clara 给最后一页索引起的昵称是“___索引”。" },
+      { id: "q7", type: "short_answer", questionText: "请根据资料简要说明：为什么 Alice 最后没有把银色书签交给馆长，而是交给了 Mina？" },
+    ],
+  });
+  assert.deepEqual(Array.from(results[0].optionLetters), ["A", "D"]);
+  assert.deepEqual(Array.from(results[1].optionLetters), ["B"]);
+  assert.deepEqual(Array.from(results[2].optionLetters), ["A", "C"]);
+  assert.equal(results[3].answer, "晚归的人");
+  assert.equal(results[4].answer, "迷路");
+  assert.match(results[5].answer, /Mina/);
+  assert.equal(results[5].answer.includes("<p>"), false);
+  assert.equal(results[5].displayAsText, true);
+}
+
 async function testMaterialAliceSamplePageMojibakeQuestions() {
   const materialText = [
     read("work/v140-material-samples/alice-reading-log.txt"),
@@ -551,6 +607,24 @@ async function testDebugLogExportLifecycle() {
   const thirdExport = await background.send({ type: "EXPORT_DEBUG_LOGS" });
   assert.equal(thirdExport.ok, true);
   assert.equal(thirdExport.count, 0);
+}
+
+async function testContentDebugLogExport() {
+  const background = createBackground({});
+  const accepted = await background.send({
+    type: "CONTENT_DEBUG",
+    event: "scan_no_questions",
+    active: true,
+    questionCount: 0,
+    reason: "no_question_blocks_detected",
+  });
+  assert.equal(accepted.ok, true);
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.ok(exported.entries.some((entry) =>
+    entry.event === "content_scan_no_questions" &&
+    entry.active === true &&
+    entry.questionCount === 0
+  ));
 }
 
 async function testQuestionConcurrencyLimit() {
@@ -964,6 +1038,47 @@ function testQuestionExtractorDedupesNestedCandidates() {
   assert.ok(items[0].question.evidence.length > 0);
 }
 
+function testContentScriptPing() {
+  let runtimeListener;
+  const document = {
+    readyState: "complete",
+    body: {},
+    getElementById: () => null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+  };
+  const context = {
+    self: { AutoAnswer: {
+      Types: {
+        MSG_TYPE: { EXTENSION_TOGGLE: "EXTENSION_TOGGLE" },
+        QUESTION_TYPE: {},
+        ANSWER_SOURCE: { FAILED: "failed" },
+      },
+      Matcher: {},
+      Annotator: {},
+    } },
+    document,
+    chrome: {
+      storage: {
+        sync: { get: (_keys, cb) => cb({ extensionEnabled: false }), set() {} },
+        onChanged: { addListener() {} },
+      },
+      runtime: { onMessage: { addListener: (fn) => { runtimeListener = fn; } } },
+    },
+    MutationObserver: class { observe() {} },
+    setTimeout: () => 1,
+    clearTimeout() {},
+    console,
+  };
+  vm.runInNewContext(read("src/content/content-script.js"), context);
+  let response;
+  runtimeListener({ type: "AA_PING" }, {}, (value) => { response = value; });
+  assert.equal(response.ok, true);
+  assert.equal(response.active, false);
+  assert.equal(response.detected, 0);
+  assert.equal(response.answered, 0);
+}
+
 function testDisableClearsAnnotations() {
   let runtimeListener;
   let removed = 0;
@@ -1066,6 +1181,7 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testMaterialAnswerIncludesRankerEvidence();
   await testMaterialFillAnswerFromServiceWorker();
   await testMaterialAliceMixedLanguageQuestions();
+  await testMaterialNonObjectiveV145FallbackCases();
   await testMaterialAliceSamplePageMojibakeQuestions();
   await testMaterialAnswerIsFallbackWhenAiSucceeds();
   await testMaterialFallbackCanBeDisabled();
@@ -1073,12 +1189,14 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testWeakMaterialEvidenceStaysReferenceOnly();
   await testConflictWarning();
   await testDebugLogExportLifecycle();
+  await testContentDebugLogExport();
   await testQuestionConcurrencyLimit();
   testMultipleChoiceAnnotationAndEscaping();
   testReferenceOnlyAnnotationEscapesHtml();
   testQuestionExtractorMoodleMetadata();
   testQuestionExtractorGenericFormAndNoise();
   testQuestionExtractorDedupesNestedCandidates();
+  testContentScriptPing();
   testDisableClearsAnnotations();
   testMutationDuringCooldownSchedulesDeferredScan();
   console.log("All extension regression tests passed");

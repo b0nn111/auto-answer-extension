@@ -18,6 +18,7 @@
 
   function logExtraction(items) {
     if (!items || !items.length) return;
+    if (root.AutoAnswer.DEBUG !== true) return;
     try {
       console.log("[答题助手] 结构化识别 " + items.length + " 道题:", items.map((item) => summarizeQuestion(item.question)));
     } catch (_) {}

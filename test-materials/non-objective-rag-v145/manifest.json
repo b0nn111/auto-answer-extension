@@ -1,0 +1,16 @@
+{
+  "created_for": "non-objective-rag-quiz-v145.html",
+  "related_folder": "D:\\CodexProjects\\auto-answer-extension\\test-materials\\non-objective-rag-v145\\related",
+  "unrelated_folder": "D:\\CodexProjects\\auto-answer-extension\\test-materials\\non-objective-rag-v145\\unrelated",
+  "formats": [
+    "txt",
+    "pdf",
+    "docx",
+    "pptx",
+    "xlsx",
+    "csv",
+    "html",
+    "json"
+  ],
+  "note": "Upload both folders to test relevant retrieval versus distractors. No markdown files are included."
+}

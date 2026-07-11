@@ -3,6 +3,8 @@
 
   const { Types, DB, MaterialDB, Ollama, AiApi } = self.AutoAnswer;
   const $ = (id) => document.getElementById(id);
+  const DEFAULT_FOLDER_NAME = "\u9ed8\u8ba4\u6587\u4ef6\u5939";
+  const DEFAULT_FOLDER_VALUE = "__auto_answer_default_folder__";
 
   let importFileData = null;
   let keyVisible = false;
@@ -13,20 +15,28 @@
       "ollamaUrl",
       "ollamaModel",
       "aiApiUrl",
-      "aiApiKey",
       "aiApiModel",
+      "aiApiKey",
       "deepseekKey",
       "freeSearchEnabled",
       "freeSearchUrl",
       "materialFallbackEnabled",
       "materialFallbackMinConfidence",
     ]);
+    const localSecrets = chrome.storage.local
+      ? await chrome.storage.local.get(["aiApiKey", "deepseekKey"]).catch(() => ({}))
+      : {};
 
     if (stored.ollamaUrl) $("ollamaUrl").value = stored.ollamaUrl;
     if (stored.ollamaModel) $("ollamaModel").value = stored.ollamaModel;
     if (stored.aiApiUrl) $("aiApiUrl").value = stored.aiApiUrl;
     if (stored.aiApiModel) $("aiApiModel").value = stored.aiApiModel;
-    if (stored.aiApiKey || stored.deepseekKey) $("aiApiKey").value = stored.aiApiKey || stored.deepseekKey;
+    const apiKey = String(localSecrets.aiApiKey || localSecrets.deepseekKey || stored.aiApiKey || stored.deepseekKey || "").trim();
+    if (apiKey) $("aiApiKey").value = apiKey;
+    if (chrome.storage.local && apiKey && !localSecrets.aiApiKey && (stored.aiApiKey || stored.deepseekKey)) {
+      await chrome.storage.local.set({ aiApiKey: apiKey }).catch(() => {});
+      await removeSyncedSecrets();
+    }
     $("freeSearchEnabled").checked = stored.freeSearchEnabled === true;
     if (stored.freeSearchUrl) $("freeSearchUrl").value = stored.freeSearchUrl;
     $("materialFallbackEnabled").checked = stored.materialFallbackEnabled !== false;
@@ -41,16 +51,20 @@
       ollamaModel: $("ollamaModel").value.trim() || Types.DEFAULT_OLLAMA_MODEL,
       aiApiUrl: $("aiApiUrl").value.trim() || Types.DEFAULT_AI_API_URL,
       aiApiModel: $("aiApiModel").value.trim() || Types.DEFAULT_AI_MODEL,
-      aiApiKey: $("aiApiKey").value.trim(),
       freeSearchEnabled: $("freeSearchEnabled").checked,
       freeSearchUrl: $("freeSearchUrl").value.trim() || Types.DEFAULT_FREE_SEARCH_URL,
       materialFallbackEnabled: $("materialFallbackEnabled").checked,
       materialFallbackMinConfidence: normalizeMaterialFallbackMinConfidence(Number($("materialFallbackMinConfidence").value) / 100),
     };
+    const aiApiKey = $("aiApiKey").value.trim();
 
     await chrome.storage.sync.set(settings);
+    if (chrome.storage.local) {
+      await chrome.storage.local.set({ aiApiKey });
+      await removeSyncedSecrets();
+    }
     try {
-      chrome.runtime.sendMessage({ type: Types.MSG_TYPE.SETTINGS_UPDATED, settings }, () => {
+      chrome.runtime.sendMessage({ type: Types.MSG_TYPE.SETTINGS_UPDATED, settings: { ...settings, aiApiKey } }, () => {
         void chrome.runtime.lastError;
       });
     } catch (_) {}
@@ -141,9 +155,14 @@
     updateMaterialSummary();
 
     const target = $("targetFolder");
-    target.innerHTML = folders.length
-      ? folders.map((folder) => '<option value="' + escapeAttr(folder.id) + '">' + escapeHtml(folder.name) + "</option>").join("")
-      : '<option value="">请先创建文件夹</option>';
+    const defaultFolder = findDefaultFolder(folders);
+    const defaultOptionValue = defaultFolder ? defaultFolder.id : DEFAULT_FOLDER_VALUE;
+    target.innerHTML = [
+      '<option value="' + escapeAttr(defaultOptionValue) + '">' + DEFAULT_FOLDER_NAME + "</option>",
+      ...folders
+        .filter((folder) => folder.id !== defaultFolder?.id)
+        .map((folder) => '<option value="' + escapeAttr(folder.id) + '">' + escapeHtml(folder.name) + "</option>"),
+    ].join("");
 
     const library = $("materialLibrary");
     if (!folders.length) {
@@ -231,15 +250,20 @@
   }
 
   async function uploadMaterials() {
-    const folderId = $("targetFolder").value;
+    let folderId = $("targetFolder").value;
     const files = Array.from($("materialFiles").files || []);
-    if (!folderId) {
-      showMaterialStatus("请先选择或创建文件夹", "err");
-      return;
-    }
     if (!files.length) {
       showMaterialStatus("请先选择文件", "err");
       return;
+    }
+
+    if (!folderId || folderId === DEFAULT_FOLDER_VALUE || folderId === findDefaultFolder(materialState.folders || [])?.id) {
+      try {
+        folderId = await resolveUploadFolderId();
+      } catch (error) {
+        showMaterialStatus(error?.message || "Default folder is not available", "err");
+        return;
+      }
     }
 
     const uploadButton = $("uploadMaterials");
@@ -308,6 +332,40 @@
     if (failed) detail.push("失败 " + failed + " 个");
     showMaterialStatus("导入完成：" + detail.join("，"), success ? "ok" : "err");
     await loadMaterials();
+  }
+
+  async function resolveUploadFolderId() {
+    const selected = $("targetFolder").value;
+    let folder = findDefaultFolder(materialState.folders || []);
+    const selectedIsDefault = selected === DEFAULT_FOLDER_VALUE || (folder && selected === folder.id);
+    if (selected && !selectedIsDefault) return selected;
+
+    if (!folder) {
+      await loadMaterials().catch(() => {});
+      folder = findDefaultFolder(materialState.folders || []);
+    }
+
+    if (!folder) {
+      const response = await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_CREATE_FOLDER, name: DEFAULT_FOLDER_NAME });
+      if (!response || !response.ok) throw new Error(response?.error || "Default folder create failed");
+      materialState = response;
+      folder = findDefaultFolder(materialState.folders || []);
+    }
+    if (!folder) throw new Error("Default folder is not available");
+
+    if (folder.enabled !== true) {
+      const response = await chrome.runtime.sendMessage({ type: Types.MSG_TYPE.MATERIAL_SET_FOLDER_ENABLED, folderId: folder.id, enabled: true });
+      if (response?.ok) {
+        materialState = response;
+        folder = findDefaultFolder(materialState.folders || []) || folder;
+      }
+    }
+    renderMaterials();
+    return folder.id;
+  }
+
+  function findDefaultFolder(folders) {
+    return (folders || []).find((folder) => String(folder.name || "").trim() === DEFAULT_FOLDER_NAME) || null;
   }
 
   function renderMaterialImportQueue(items) {
@@ -423,6 +481,11 @@
     $("freeSearchSummary").textContent = enabled
       ? "已启用：会调用公开搜题接口"
       : "已关闭：不会发送到免费搜题接口";
+  }
+
+  async function removeSyncedSecrets() {
+    if (typeof chrome.storage.sync.remove !== "function") return;
+    await chrome.storage.sync.remove(["aiApiKey", "deepseekKey"]).catch(() => {});
   }
 
   function updateMaterialSummary() {

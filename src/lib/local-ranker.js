@@ -370,7 +370,7 @@
 
   const QUERY_ALIASES = [
     { pattern: /\u559c\u6b22|\u6c34\u679c|\u5403/, tokens: ["favorite", "fruit", "likes", "like"] },
-    { pattern: /\u5468\u4e8c|\u661f\u671f\u4e8c|\u5b9e\u9a8c\u5ba4|\u5e26|\u643a\u5e26|\u4e1c\u897f/, tokens: ["tuesday", "lab", "packed", "brought", "items", "included"] },
+    { pattern: /\u5468\u4e8c|\u661f\u671f\u4e8c|\u5b9e\u9a8c\u5ba4|\u5e26|\u643a\u5e26|\u4e1c\u897f|\u7269\u54c1|\u53ea\u5e26|\u53ea\u4fdd\u7559|\u6700\u7ec8|only|kept|keep|final/, tokens: ["tuesday", "lab", "packed", "brought", "items", "included", "only", "kept", "final"] },
     { pattern: /locker|\u6697\u53f7|\u5bc6\u7801|code/, tokens: ["locker", "code"] },
     { pattern: /\u4e3a\u4ec0\u4e48|\u539f\u56e0|\u9009\u62e9|quiet|corner|\u56fe\u4e66\u9986/, tokens: ["reason", "because", "chose", "quiet", "corner", "library", "window", "away"] },
     { pattern: /\u6807\u7b7e|\u989c\u8272|\u96e8\u5929|\u9605\u8bfb\u5305/, tokens: ["label", "color", "colour", "rainy", "reading", "kit"] },
@@ -378,7 +378,7 @@
 
   const FOCUS_RULES = [
     { pattern: /favorite|favourite|\u559c\u6b22|\u6c34\u679c/, tokens: ["favorite", "fruit", "likes"] },
-    { pattern: /packed|brought|included|\u5e26|\u643a\u5e26|\u4e1c\u897f/, tokens: ["packed", "brought", "included", "items"] },
+    { pattern: /packed|brought|included|only|kept|keep|final|\u5e26|\u643a\u5e26|\u4e1c\u897f|\u7269\u54c1|\u53ea\u5e26|\u53ea\u4fdd\u7559|\u6700\u7ec8/, tokens: ["packed", "brought", "included", "items", "only", "kept", "final"] },
     { pattern: /locker|code|\u5bc6\u7801|\u6697\u53f7/, tokens: ["locker", "code"] },
     { pattern: /label|color|colour|\u6807\u7b7e|\u989c\u8272/, tokens: ["label", "color", "colour"] },
     { pattern: /why|reason|because|\u4e3a\u4ec0\u4e48|\u539f\u56e0/, tokens: ["reason", "because", "why"] },
@@ -386,16 +386,20 @@
 
   const RELATION_WORDS = [
     "favorite", "favourite", "likes", "like", "packed", "included", "include",
-    "brought", "took", "label", "code", "reason", "because", "chose",
+    "brought", "took", "kept", "keep", "only", "final", "label", "code", "reason", "because", "chose",
+    "\u53ea\u5e26", "\u53ea\u4fdd\u7559", "\u4fdd\u7559", "\u6700\u7ec8", "\u51b3\u5b9a",
   ];
 
   const NEGATIVE_BEFORE = [
     "not", "never", "refused", "left", "without", "except", "distractor",
+    "removed", "deleted", "exclude", "excluded", "discarded",
     "\u6ca1\u6709", "\u4e0d\u662f", "\u62d2\u7edd", "\u7559\u4e0b", "\u5e72\u6270",
+    "\u5220\u9664", "\u5220\u53bb", "\u53bb\u6389", "\u6392\u9664", "\u4e0d\u5e26", "\u4e0d\u4fdd\u7559",
   ];
 
   const NEGATIVE_AFTER = [
     "was not", "not favorite", "only for", "kept for", "left in", "left the",
-    "refused", "distractor",
+    "refused", "distractor", "removed", "deleted", "excluded",
+    "\u4e0d\u5e26", "\u4e0d\u4fdd\u7559", "\u88ab\u5220\u9664",
   ];
 })();

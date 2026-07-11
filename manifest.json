@@ -3,7 +3,7 @@
   "name": "\u81ea\u52a8\u7b54\u9898\u52a9\u624b",
   "version": "1.4.5",
   "description": "\u81ea\u52a8\u8bc6\u522b\u7f51\u9875\u9898\u76ee\uff0c\u652f\u6301\u672c\u5730\u9898\u5e93\u3001\u8d44\u6599\u5e93\u8f85\u52a9\u3001\u672c\u5730 AI\u3001\u514d\u8d39\u641c\u9898\u548c OpenAI \u517c\u5bb9 API\u3002",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting", "activeTab"],
   "host_permissions": [
     "http://localhost:*/*",
     "http://127.0.0.1:*/*",

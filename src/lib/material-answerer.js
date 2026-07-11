@@ -5,7 +5,8 @@
 
   const MIN_CHOICE_SCORE = 0.48;
   const MIN_CHOICE_MARGIN = 0.03;
-  const MIN_TEXT_SCORE = 0.42;
+  const MIN_PARTIAL_CHOICE_SCORE = 0.18;
+  const MIN_TEXT_SCORE = 0.32;
   const MAX_REFERENCES = 3;
   const MATERIAL_WARNING = "\u672c\u5730\u8d44\u6599\u62bd\u53d6\uff0c\u4ec5\u4f5c\u53c2\u8003";
 
@@ -53,15 +54,15 @@
       .sort((a, b) => b.score - a.score);
     const best = scored[0];
     const second = scored[1] || { score: 0 };
-    if (!best || best.score < MIN_CHOICE_SCORE || (!q.multiple && best.score - second.score < MIN_CHOICE_MARGIN)) {
+    const strongSingle = best && best.score >= MIN_CHOICE_SCORE && best.score - second.score >= MIN_CHOICE_MARGIN;
+    const partialSingle = best && !q.multiple && best.score >= MIN_PARTIAL_CHOICE_SCORE && best.score - second.score >= 0.12;
+    if (!best || (!q.multiple && !strongSingle && !partialSingle) || (q.multiple && best.score < MIN_CHOICE_SCORE)) {
       return noAnswer({ scores: summarizeScores(scored) });
     }
 
     if (q.multiple) {
-      const selected = scored
-        .filter((item) => item.score >= MIN_CHOICE_SCORE)
-        .sort((a, b) => a.index - b.index);
-      if (!selected.length || selected.length >= q.options.length) return noAnswer({ scores: summarizeScores(scored) });
+      const selected = selectMultipleAnswers(scored, q);
+      if (!selected.length) return noAnswer({ scores: summarizeScores(scored) });
       return {
         success: true,
         answer: selected.map((item) => item.letter + ". " + item.optionText).join(", "),
@@ -75,7 +76,7 @@
     return {
       success: true,
       answer: best.letter + ". " + best.optionText,
-      confidence: clamp(0.42 + best.score * 0.34),
+      confidence: clamp(partialSingle ? 0.5 + best.score * 0.32 : 0.42 + best.score * 0.34),
       materials: uniqueMaterials(best.materials),
       warning: MATERIAL_WARNING,
       debug: { scores: summarizeScores(scored) },
@@ -93,20 +94,24 @@
       sentences.forEach((sentence) => {
         const norm = normalize(sentence);
         const exactOption = optionNorm.length >= 2 && norm.includes(optionNorm) ? 1 : 0;
-        if (!exactOption) return;
         const sentenceTokens = tokenize(sentence);
         const optionOverlap = tokenOverlap(optionTokens, sentenceTokens);
+        if (!exactOption && optionOverlap < 0.42) return;
+        const partialOption = !exactOption && optionOverlap >= 0.42 ? 1 : 0;
         const queryOverlap = tokenOverlap(queryTokens, sentenceTokens);
         const keyValue = keyValueOptionSupport(sentence, optionNorm, queryTokens);
         const relation = relationOptionSupport(sentence, optionNorm);
-        const negative = negativeContext(sentence, optionNorm);
+        const keepOnly = keepOnlyOptionSupport(sentence, optionNorm);
+        const negative = Math.max(negativeContext(sentence, optionNorm), keepOnly.negative);
         const score = Number(ref.score || 0) * 0.16 +
-          exactOption * 0.22 +
-          optionOverlap * 0.12 +
+          exactOption * 0.16 +
+          partialOption * 0.28 +
+          optionOverlap * 0.22 +
           queryOverlap * 0.14 +
-          keyValue * 0.34 +
-          relation * 0.22 -
-          negative * 0.45;
+          keyValue * 0.30 +
+          keepOnly.positive * 0.36 +
+          relation * 0.20 -
+          negative * 0.58;
         if (score > bestScore) bestScore = score;
         if (score >= MIN_CHOICE_SCORE - 0.08) matchedMaterials.push(ref);
       });
@@ -125,9 +130,16 @@
       candidateSentences(ref).forEach((sentence) => {
         const tokens = tokenize(sentence);
         const overlap = tokenOverlap(queryTokens, tokens);
+        const direct = directAnswerSentence(sentence, q.questionText);
+        const blank = blankAnswer(sentence, q.questionText);
         const keyValue = keyValueAnswer(sentence, queryTokens);
-        const score = Number(ref.score || 0) * 0.16 + Number(ref.rankerScore || 0) * 0.16 + overlap * 0.48 + (keyValue ? 0.2 : 0);
-        const answer = keyValue || compactAnswer(sentence, q.questionText);
+        const score = Number(ref.score || 0) * 0.15 +
+          Number(ref.rankerScore || 0) * 0.18 +
+          overlap * 0.45 +
+          (direct ? 0.22 : 0) +
+          (blank ? 0.24 : 0) +
+          (keyValue ? 0.2 : 0);
+        const answer = blank || keyValue || direct || compactAnswer(sentence, q.questionText);
         if (answer && (!best || score > best.score)) {
           best = { answer, score, ref };
         }
@@ -136,12 +148,61 @@
     if (!best || best.score < MIN_TEXT_SCORE) return noAnswer();
     return {
       success: true,
-      answer: best.answer,
+      answer: cleanAnswerText(best.answer),
       confidence: clamp(0.38 + best.score * 0.32),
       materials: [best.ref],
       displayAsText: true,
       warning: MATERIAL_WARNING,
     };
+  }
+
+  function directAnswerSentence(sentence, questionText) {
+    const q = normalize(questionText);
+    if (!/(why|reason|because|\u4e3a\u4ec0\u4e48|\u539f\u56e0|\u8bf4\u660e)/.test(q)) return "";
+    const text = stripHtml(sentence).replace(/\s+/g, " ").trim();
+    const cues = [
+      "\u56e0\u4e3a", "\u6240\u4ee5", "\u56e0\u6b64", "\u800c\u662f", "\u62c5\u5fc3",
+      "because", "so", "therefore", "instead",
+    ];
+    if (!cues.some((cue) => text.includes(cue))) return "";
+    return compactAnswer(text, questionText);
+  }
+
+  function selectMultipleAnswers(scored, q) {
+    const best = scored[0];
+    if (!best || best.score < MIN_CHOICE_SCORE) return [];
+    const expected = expectedAnswerCount(q.questionText);
+    if (expected > 0) {
+      const selected = scored.slice(0, expected).filter((item) => item.score >= MIN_CHOICE_SCORE - 0.04);
+      return selected.length === expected ? selected.sort((a, b) => a.index - b.index) : [];
+    }
+    const clustered = selectTopScoreCluster(scored);
+    if (clustered.length) return clustered.sort((a, b) => a.index - b.index);
+    const cutoff = Math.max(MIN_CHOICE_SCORE, best.score - 0.09);
+    const selected = scored.filter((item) => item.score >= cutoff);
+    if (selected.length >= scored.length) return [];
+    return selected.sort((a, b) => a.index - b.index);
+  }
+
+  function selectTopScoreCluster(scored) {
+    const best = scored[0];
+    if (!best || scored.length < 2) return [];
+    const topGroup = scored.filter((item) =>
+      item.score >= MIN_CHOICE_SCORE &&
+      best.score - item.score <= 0.025
+    );
+    const next = scored[topGroup.length];
+    if (!topGroup.length || topGroup.length >= scored.length || !next) return [];
+    const gap = topGroup[topGroup.length - 1].score - next.score;
+    if (gap < 0.05) return [];
+    return topGroup;
+  }
+
+  function expectedAnswerCount(questionText) {
+    const text = String(questionText || "").toLowerCase();
+    if (/(?:\u54ea|\u9009|choose|pick|select).{0,12}(?:\u4e24\u4e2a|\u4e24\u9879|\u4e24\u4ef6|\u54ea\u4e24|2\s*\u4e2a|2\s*\u9879|2\s*\u4ef6|two|both|dos|deux|zwei)/i.test(text)) return 2;
+    if (/(?:\u54ea|\u9009|choose|pick|select).{0,12}(?:\u4e09\u4e2a|\u4e09\u9879|\u4e09\u4ef6|\u54ea\u4e09|3\s*\u4e2a|3\s*\u9879|3\s*\u4ef6|three|tres|trois|drei)/i.test(text)) return 3;
+    return 0;
   }
 
   function normalizeQuestion(question) {
@@ -176,7 +237,7 @@
   }
 
   function candidateSentences(ref) {
-    return String(ref?.markdown || ref?.text || "")
+    return stripHtml(ref?.markdown || ref?.text || "")
       .replace(/^#+\s+/gm, "")
       .split(/(?:\n+|(?<=[.!?\u3002\uff01\uff1f])\s*)/)
       .map((item) => item.replace(/^Row\s+\d+:\s*/i, "").trim())
@@ -192,6 +253,41 @@
     if (hits < 2 && !(hits >= 1 && leftTokens.length <= 3)) return "";
     const value = parts[1].replace(/[\u3002.!?\uff01\uff1f]+$/, "").trim();
     return value.length <= 80 ? value : "";
+  }
+
+  function blankAnswer(sentence, questionText) {
+    const question = String(questionText || "");
+    const blank = question.match(/_{2,}|\uff3f{2,}/);
+    if (!blank) return "";
+    const before = question.slice(0, blank.index);
+    const after = question.slice(blank.index + blank[0].length);
+    const prefix = tailLiteral(before, 16);
+    const suffix = headLiteral(after, 12);
+    const text = String(sentence || "").replace(/\s+/g, " ").trim();
+
+    if (prefix) {
+      const prefixAt = text.indexOf(prefix);
+      if (prefixAt >= 0) {
+        const start = prefixAt + prefix.length;
+        const rest = text.slice(start);
+        const end = suffix ? rest.indexOf(suffix) : -1;
+        const value = (end >= 0 ? rest.slice(0, end) : rest)
+          .replace(/^[\s:：，,。.!?！？；;'"“”]+/, "")
+          .replace(/[\s:：，,。.!?！？；;'"“”]+$/, "")
+          .trim();
+        if (value.length >= 1 && value.length <= 40) return value;
+      }
+    }
+
+    if (suffix) {
+      const suffixAt = text.indexOf(suffix);
+      if (suffixAt > 0) {
+        const beforeSuffix = text.slice(Math.max(0, suffixAt - 40), suffixAt);
+        const match = beforeSuffix.match(/([\u4e00-\u9fffa-z0-9_-]{1,24})\s*$/i);
+        if (match) return match[1].trim();
+      }
+    }
+    return "";
   }
 
   function keyValueOptionSupport(sentence, optionNorm, queryTokens) {
@@ -280,22 +376,67 @@
     const fullPhrase = text.slice(Math.max(0, optionAt - 90), optionAt + optionNorm.length + 20);
     const beforeNegatives = [
       "not", "never", "refused", "left", "without", "except", "distractor",
-      "不", "没有", "不是", "拒绝", "留下", "干扰项",
+      "\u4e0d", "\u6ca1\u6709", "\u4e0d\u662f", "\u62d2\u7edd", "\u7559\u4e0b", "\u5e72\u6270\u9879",
+      "removed", "deleted", "exclude", "excluded", "discarded",
+      "\u5220\u9664", "\u5220\u53bb", "\u53bb\u6389", "\u6392\u9664", "\u4e0d\u5e26", "\u4e0d\u4fdd\u7559",
     ];
-    if (beforeNegatives.some((item) => before.includes(item))) return 1;
+    if (beforeNegatives.some((item) => before.includes(item)) && !hasKeepCueAfterLastNegative(before, beforeNegatives)) return 1;
     const afterNegatives = [
       "was not her favorite", "was not favorite", "not her favorite", "not favorite",
       "only for", "kept for", "left in", "left the", "refused", "distractor",
+      "\u4e0d\u5e26", "\u4e0d\u4fdd\u7559", "\u88ab\u5220\u9664",
     ];
     if (afterNegatives.some((item) => after.includes(item))) return 1;
     const optionPattern = escapeRegExp(optionNorm).replace(/\\ /g, "\\s+");
-    const beforePattern = new RegExp("(do not include|did not include|not include|was not|not her favorite|left|refused)\\s+(?:\\w+\\s+){0,4}" + optionPattern);
-    const afterPattern = new RegExp(optionPattern + "\\s+(?:\\w+\\s+){0,4}(was not|not her favorite|only for|kept for|distractor)");
+    const beforePattern = new RegExp("(do not include|did not include|not include|was not|not her favorite|left|refused|removed|deleted|excluded|\\u5220\\u9664|\\u5220\\u53bb|\\u53bb\\u6389|\\u6392\\u9664)\\s+(?:\\w+\\s+){0,4}" + optionPattern);
+    const afterPattern = new RegExp(optionPattern + "\\s+(?:\\w+\\s+){0,4}(was not|not her favorite|only for|kept for|distractor|removed|deleted|excluded|\\u4e0d\\u5e26|\\u4e0d\\u4fdd\\u7559)");
     return beforePattern.test(fullPhrase) || afterPattern.test(fullPhrase) ? 1 : 0;
   }
 
+  function keepOnlyOptionSupport(sentence, optionNorm) {
+    const text = normalize(sentence);
+    const optionAt = text.indexOf(optionNorm);
+    if (optionAt < 0) return { positive: 0, negative: 0 };
+    const keepAt = firstCueIndex(text, [
+      "only", "kept", "keep", "include",
+      "\u53ea\u4fdd\u7559", "\u4fdd\u7559", "\u53ea\u5e26", "\u5e26\u4e0a",
+    ]);
+    if (keepAt >= 0 && optionAt > keepAt) return { positive: 1, negative: 0 };
+    const removeAt = firstCueIndex(text, [
+      "removed", "deleted", "exclude", "excluded", "discarded",
+      "\u5220\u9664", "\u5220\u53bb", "\u53bb\u6389", "\u6392\u9664",
+    ]);
+    if (removeAt >= 0 && optionAt > removeAt && (keepAt < 0 || optionAt < keepAt)) {
+      return { positive: 0, negative: 1 };
+    }
+    return { positive: 0, negative: 0 };
+  }
+
+  function firstCueIndex(text, cues) {
+    let result = -1;
+    cues.forEach((cue) => {
+      const at = text.indexOf(cue);
+      if (at >= 0 && (result < 0 || at < result)) result = at;
+    });
+    return result;
+  }
+
+  function hasKeepCueAfterLastNegative(text, negatives) {
+    let lastNegative = -1;
+    negatives.forEach((item) => {
+      const at = text.lastIndexOf(item);
+      if (at > lastNegative) lastNegative = at;
+    });
+    if (lastNegative < 0) return false;
+    const tail = text.slice(lastNegative);
+    return [
+      "only", "kept", "include", "included",
+      "\u53ea\u4fdd\u7559", "\u4fdd\u7559", "\u53ea\u5e26", "\u5e26\u4e0a",
+    ].some((cue) => tail.includes(cue));
+  }
+
   function compactAnswer(sentence, questionText) {
-    let clean = String(sentence || "")
+    let clean = stripHtml(sentence)
       .replace(/^Row\s+\d+:\s*/i, "")
       .replace(/\s+/g, " ")
       .trim();
@@ -307,6 +448,38 @@
     clean = clean.replace(/[\u3002.!?\uff01\uff1f]+$/, "").trim();
     if (clean.length > 180) clean = clean.slice(0, 180).trim() + "...";
     return clean;
+  }
+
+  function cleanAnswerText(text) {
+    return stripHtml(text)
+      .replace(/\s+/g, " ")
+      .replace(/^[\s:：，,。.!?！？；;'"“”]+/, "")
+      .replace(/[\s:：，,。.!?！？；;'"“”]+$/, "")
+      .trim();
+  }
+
+  function stripHtml(value) {
+    return String(value || "")
+      .replace(/<\s*br\s*\/?>/gi, "\n")
+      .replace(/<\/\s*p\s*>/gi, "\n")
+      .replace(/<[^>]+>/g, " ");
+  }
+
+  function tailLiteral(text, maxLength) {
+    const parts = String(text || "")
+      .split(/[\n\r\uff0c,\u3002.!?\uff01\uff1f\uff1b;:\uff1a'"“”]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const value = parts.length ? parts[parts.length - 1] : "";
+    return value.slice(Math.max(0, value.length - maxLength));
+  }
+
+  function headLiteral(text, maxLength) {
+    const parts = String(text || "")
+      .split(/[\n\r\uff0c,\u3002.!?\uff01\uff1f\uff1b;:\uff1a'"“”]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return (parts[0] || "").slice(0, maxLength);
   }
 
   function questionOptionProximity(text, queryTokens, optionNorm) {
@@ -419,7 +592,7 @@
 
   const QUESTION_ALIASES = [
     { pattern: /\u559c\u6b22|\u6c34\u679c|\u5403/, tokens: ["favorite", "fruit", "likes", "like"] },
-    { pattern: /\u5468\u4e8c|\u661f\u671f\u4e8c|\u5b9e\u9a8c\u5ba4|\u5e26|\u643a\u5e26|\u4e1c\u897f/, tokens: ["tuesday", "lab", "packed", "brought", "items", "included"] },
+    { pattern: /\u5468\u4e8c|\u661f\u671f\u4e8c|\u5b9e\u9a8c\u5ba4|\u5e26|\u643a\u5e26|\u4e1c\u897f|\u7269\u54c1|\u53ea\u5e26|\u53ea\u4fdd\u7559|\u6700\u7ec8|only|kept|final/, tokens: ["tuesday", "lab", "packed", "brought", "items", "included", "only", "kept", "final"] },
     { pattern: /locker|\u6697\u53f7|\u5bc6\u7801|code/, tokens: ["locker", "code"] },
     { pattern: /\u4e3a\u4ec0\u4e48|\u539f\u56e0|\u9009\u62e9|quiet|corner|\u56fe\u4e66\u9986/, tokens: ["why", "reason", "because", "chose", "quiet", "corner", "library", "window", "away"] },
     { pattern: /\u6807\u7b7e|\u989c\u8272|\u96e8\u5929|\u9605\u8bfb\u5305/, tokens: ["label", "color", "colour", "rainy", "reading", "kit"] },

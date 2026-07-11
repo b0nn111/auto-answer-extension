@@ -29,8 +29,9 @@
   // Toggle handler
   document.getElementById("master-toggle").addEventListener("change", async (e) => {
     const enabled = e.target.checked;
-    chrome.storage.sync.set({ extensionEnabled: enabled });
+    await chrome.storage.sync.set({ extensionEnabled: enabled });
     updateToggleUI(enabled);
+    if (enabled) await ensureActiveTabReady(true);
     // Send to all tabs
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -54,6 +55,7 @@
     updateToggleUI(true);
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id) {
+      await ensureContentScript(tabs[0]);
       chrome.tabs.sendMessage(tabs[0].id, { type: "EXTENSION_TOGGLE", active: true }).catch(() => {});
       chrome.tabs.sendMessage(tabs[0].id, { type: "RETRY_SCAN" }).catch(() => {});
     }
@@ -67,6 +69,64 @@
     updateToggleUI(enabled);
   });
 });
+
+const CONTENT_SCRIPT_FILES = [
+  "src/lib/types.js",
+  "src/lib/matcher.js",
+  "src/lib/answer-normalizer.js",
+  "src/lib/db.js",
+  "src/lib/material-db.js",
+  "src/lib/material-retriever.js",
+  "src/content/annotator.js",
+  "src/content/question-normalizer.js",
+  "src/content/question-adapters/moodle.js",
+  "src/content/question-adapters/generic-form.js",
+  "src/content/question-debug.js",
+  "src/content/question-extractor.js",
+  "src/content/content-script.js",
+];
+
+async function ensureActiveTabReady(scanAfterInject) {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  if (!tab?.id) return false;
+  const ready = await ensureContentScript(tab);
+  if (ready && scanAfterInject) {
+    await chrome.tabs.sendMessage(tab.id, { type: "EXTENSION_TOGGLE", active: true }).catch(() => {});
+    await chrome.tabs.sendMessage(tab.id, { type: "RETRY_SCAN" }).catch(() => {});
+  }
+  return ready;
+}
+
+async function ensureContentScript(tab) {
+  if (!tab?.id || !canInjectIntoTab(tab)) return false;
+  const ping = await pingContentScript(tab.id);
+  if (ping) return true;
+  if (!chrome.scripting?.executeScript) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: CONTENT_SCRIPT_FILES,
+    });
+  } catch (_) {
+    return false;
+  }
+  return pingContentScript(tab.id);
+}
+
+async function pingContentScript(tabId) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: "AA_PING" });
+    return response?.ok === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function canInjectIntoTab(tab) {
+  const url = String(tab.url || "");
+  return /^https?:\/\//i.test(url);
+}
 
 function updateToggleUI(enabled) {
   const status = document.getElementById("toggle-status");

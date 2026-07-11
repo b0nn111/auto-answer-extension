@@ -37,7 +37,18 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     // Listen for messages from background
-    chrome.runtime.onMessage.addListener((msg) => {
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg.type === "AA_PING") {
+        if (typeof sendResponse === "function") {
+          sendResponse({
+            ok: true,
+            active: isActive,
+            detected: elementMap.size,
+            answered: document.querySelectorAll(".aa-badge").length,
+          });
+        }
+        return true;
+      }
       if (msg.type === Types.MSG_TYPE.EXTENSION_TOGGLE) {
         setActive(msg.active === true);
       }
@@ -76,23 +87,29 @@
   // ── Detection: targeted only, no broad selectors ──
   function detectAndSend() {
     if (!isActive) return;
+    Annotator.updateStatus?.("scanning");
     lastScanTime = Date.now();
     const questions = detectQuestions();
     if (questions.length === 0) {
+      Annotator.updateStatus?.("idle", { message: "未识别到题目" });
       scanFailCount++;
+      if (scanFailCount <= 2) {
+        logContentEvent("scan_no_questions", { questionCount: 0, reason: "no_question_blocks_detected" });
+      }
       if (scanFailCount <= 2) {
         setTimeout(scheduleScan, 3000);
       }
       return;
     }
     scanFailCount = 0;
-    // Debug: print detected questions to console
-    console.log("[答题助手] 检测到 " + questions.length + " 道题:", questions.map(q => ({ id: q.id, text: q.questionText.slice(0, 120), type: q.type, options: q.options })));
+    Annotator.updateStatus?.("scanning", { detected: questions.length });
+    logContentEvent("questions_detected", { questionCount: questions.length });
     try {
       chrome.runtime.sendMessage(
         { type: Types.MSG_TYPE.DETECT_QUESTIONS, questions },
         (answers) => {
           if (chrome.runtime.lastError) {
+            Annotator.updateStatus?.("idle", { message: "识别失败" });
             return;
           }
           if (answers && answers.length) handleAnswers(answers);
@@ -326,6 +343,7 @@
   }
   function handleAnswers(results) {
     if (!isActive) return;
+    let answeredCount = 0;
     results.forEach((r) => {
       const el = elementMap.get(r.id);
       if (!el) return;
@@ -333,17 +351,15 @@
         Annotator.annotateReferenceOnly(el, r);
         return;
       }
-      if (r.displayAsText) {
-        Annotator.annotateText(el, r);
-        return;
-      }
       if (r.source === Types.ANSWER_SOURCE.FAILED) {
         Annotator.markFailed(el, r);
         return;
       }
+      answeredCount++;
       switch (r.type) {
         case Types.QUESTION_TYPE.CHOICE:
-          Annotator.annotateChoice(el, r);
+          if (r.displayAsText) Annotator.annotateText(el, r);
+          else Annotator.annotateChoice(el, r);
           break;
         case Types.QUESTION_TYPE.FILL:
           Annotator.annotateFill(el, r);
@@ -354,6 +370,7 @@
           break;
       }
     });
+    Annotator.updateStatus?.("done", { detected: elementMap.size, answered: answeredCount });
   }
   // ── Public API ──
   root.AutoAnswer.content = root.AutoAnswer.content || {};
@@ -387,11 +404,24 @@
     elementMap.clear();
     detectedTexts.clear();
     clearAnnotations();
+    Annotator.updateStatus?.("idle", { message: "未识别" });
+    logContentEvent("retry_scan");
     scheduleScan(true);
   }
 
+  function logContentEvent(event, extra) {
+    try {
+      chrome.runtime.sendMessage({
+        type: "CONTENT_DEBUG",
+        event,
+        active: isActive,
+        ...(extra || {}),
+      }, () => {});
+    } catch (_) {}
+  }
+
   function clearAnnotations() {
-    document.querySelectorAll(".aa-badge, .aa-answer-toggle, .aa-answer-body, .aa-ghost-hint")
+    document.querySelectorAll(".aa-badge, .aa-answer-toggle, .aa-answer-body, .aa-ghost-hint, .aa-reference-note")
       .forEach((el) => el.remove());
     document.querySelectorAll(".aa-highlight-option")
       .forEach((el) => el.classList.remove("aa-highlight-option"));

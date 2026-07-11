@@ -1,0 +1,3 @@
+阅览室普通盘点
+
+This inventory mentions Alice closing curtains, but it does not mention 蓝色抽屉, 苹果干, 银色书签, or Mina. It is a distractor file.

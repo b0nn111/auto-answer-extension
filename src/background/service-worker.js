@@ -36,17 +36,22 @@
   async function loadSettings() {
     try {
       const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey", "freeSearchEnabled", "freeSearchUrl", "materialFallbackEnabled", "materialFallbackMinConfidence"]);
+      const local = chrome.storage.local
+        ? await chrome.storage.local.get(["aiApiKey", "deepseekKey"]).catch(() => ({}))
+        : {};
       if (s.ollamaUrl) settings.ollamaUrl = s.ollamaUrl;
       if (s.ollamaModel) settings.ollamaModel = s.ollamaModel;
       if (s.aiApiUrl) settings.aiApiUrl = s.aiApiUrl;
-      if (s.aiApiKey !== undefined) settings.aiApiKey = s.aiApiKey;
       if (s.aiApiModel) settings.aiApiModel = s.aiApiModel;
       if (s.freeSearchEnabled !== undefined) settings.freeSearchEnabled = s.freeSearchEnabled === true;
       if (s.freeSearchUrl) settings.freeSearchUrl = s.freeSearchUrl;
       if (s.materialFallbackEnabled !== undefined) settings.materialFallbackEnabled = s.materialFallbackEnabled === true;
       if (s.materialFallbackMinConfidence !== undefined) settings.materialFallbackMinConfidence = normalizeMaterialFallbackMinConfidence(s.materialFallbackMinConfidence);
-      // Migrate old deepseekKey setting
-      if (!settings.aiApiKey && s.deepseekKey) settings.aiApiKey = s.deepseekKey;
+      settings.aiApiKey = String(local.aiApiKey || local.deepseekKey || s.aiApiKey || s.deepseekKey || "").trim();
+      if (chrome.storage.local && !local.aiApiKey && (s.aiApiKey || s.deepseekKey)) {
+        await chrome.storage.local.set({ aiApiKey: settings.aiApiKey }).catch(() => {});
+        await removeSyncedSecrets();
+      }
     } catch (_) {}
   }
 
@@ -54,6 +59,9 @@
     switch (msg.type) {
       case Types.MSG_TYPE.DETECT_QUESTIONS:
         handleDetectQuestions(msg.questions, sendResponse);
+        return true;
+      case "CONTENT_DEBUG":
+        handleContentDebug(msg, sendResponse);
         return true;
       case Types.MSG_TYPE.SETTINGS_UPDATED:
         settings = normalizeSettings({ ...settings, ...msg.settings });
@@ -135,6 +143,11 @@
     };
   }
 
+  async function removeSyncedSecrets() {
+    if (typeof chrome.storage.sync.remove !== "function") return;
+    await chrome.storage.sync.remove(["aiApiKey", "deepseekKey"]).catch(() => {});
+  }
+
   async function handleMaterialLibrary(sendResponse) {
     try {
       const [folders, stats] = await Promise.all([
@@ -186,6 +199,15 @@
     } catch (err) {
       sendResponse([]);
     }
+  }
+
+  function handleContentDebug(msg, sendResponse) {
+    writeDebugLog({
+      event: "content_" + sanitizeText(msg.event || "event", 60),
+      active: msg.active === true,
+      questionCount: Number(msg.questionCount || 0),
+      reason: sanitizeText(msg.reason || "", 80),
+    }).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
   }
 
   async function processQuestion(q) {
@@ -380,13 +402,14 @@
       minConfidence: settings.materialFallbackMinConfidence,
     });
     if (materialAnswer?.success) {
-      if (Number(materialAnswer.confidence || 0) < settings.materialFallbackMinConfidence) {
+      const minConfidence = materialMinConfidence(q);
+      if (Number(materialAnswer.confidence || 0) < minConfidence) {
         await writeDebugLog({
           event: "material_answer_rejected",
           questionId: q.id,
           reason: "below_min_confidence",
           confidence: materialAnswer.confidence || 0,
-          minConfidence: settings.materialFallbackMinConfidence,
+          minConfidence,
           answerPreview: sanitizeText(materialAnswer.answer, 100),
         });
         return;
@@ -406,6 +429,12 @@
     return Math.max(0.3, Math.min(0.9, number));
   }
 
+  function materialMinConfidence(q) {
+    return q?.type === Types.QUESTION_TYPE.CHOICE
+      ? settings.materialFallbackMinConfidence
+      : Math.min(settings.materialFallbackMinConfidence, 0.38);
+  }
+
   function hasAiAnswerCandidate(candidates) {
     return candidates.some((candidate) =>
       candidate.provider === Types.ANSWER_SOURCE.AI_API ||
@@ -422,7 +451,7 @@
     const displayAsText = q.type === Types.QUESTION_TYPE.CHOICE
       ? !optionMatch
       : extra?.displayAsText === true;
-    const adjustedConfidence = scoreCandidate(source, confidence, optionMatch, displayAsText);
+    const adjustedConfidence = scoreCandidate(q, source, confidence, optionMatch, displayAsText);
     const provider = extra?.provider || source;
     return {
       answer: optionMatch ? choiceMatch.answer : rawAnswer,
@@ -479,7 +508,7 @@
     return ranked;
   }
 
-  function scoreCandidate(source, confidence, optionMatch, displayAsText) {
+  function scoreCandidate(q, source, confidence, optionMatch, displayAsText) {
     const sourceBoost = {
       cache: 0.05,
       material_ai: 0.03,
@@ -489,7 +518,7 @@
       material: 0.02,
     }[source] || 0;
     const matchBoost = optionMatch ? 0.03 : 0;
-    const textPenalty = displayAsText ? -0.18 : 0;
+    const textPenalty = q?.type === Types.QUESTION_TYPE.CHOICE && displayAsText ? -0.18 : 0;
     return clampConfidence(Number(confidence || 0.5) + sourceBoost + matchBoost + textPenalty);
   }
 
@@ -548,6 +577,9 @@
 
   function sanitizeText(value, maxLength) {
     return String(value || "")
+      .replace(/<\s*br\s*\/?>/gi, " ")
+      .replace(/<\/\s*p\s*>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
       .replace(/(api[_-]?key|authorization|bearer)\s*[:=]\s*[^\s,;]+/ig, "$1:[redacted]")
       .replace(/[A-Za-z0-9+/_=-]{36,}/g, "[redacted]")
       .replace(/\s+/g, " ")

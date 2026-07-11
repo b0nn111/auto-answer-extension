@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "name": "North Window Market",
+      "note": "A public market name, unrelated to 北窗笔记."
+    },
+    {
+      "name": "Old Station Concert",
+      "note": "Concert list includes speakers and cables, not 黄铜指南针 or 备用相机电池."
+    },
+    {
+      "name": "Moon Sticker Workshop",
+      "note": "Children make 小月亮贴纸; this is not Bao's map label."
+    }
+  ]
+}

@@ -77,8 +77,54 @@
       .aa-reference-details { margin-top:6px; color:#334155; }
       .aa-reference-details summary { cursor:pointer; color:#475569; font-size:12px; }
       .aa-highlight-option { outline:2px solid #22c55e; outline-offset:2px; border-radius:4px; background:#f0fdf4; }
+      .aa-status-bar {
+        margin:10px auto 14px; padding:8px 12px; max-width:900px;
+        font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        color:#334155; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px;
+      }
+      .aa-status-bar[data-state="scanning"] { color:#1d4ed8; background:#eff6ff; border-color:#bfdbfe; }
+      .aa-status-bar[data-state="done"] { color:#067647; background:#ecfdf3; border-color:#75e0a7; }
+      .aa-status-bar[data-state="idle"] { color:#64748b; background:#f8fafc; border-color:#cbd5e1; }
     `;
     document.head.appendChild(style);
+  }
+
+  function updateStatus(state, detail) {
+    injectStyles();
+    const bar = getStatusBar();
+    const nextState = state || "idle";
+    bar.dataset.state = nextState;
+    bar.textContent = statusText(nextState, detail || {});
+  }
+
+  function getStatusBar() {
+    let bar = document.getElementById("aa-status-bar");
+    if (bar) return bar;
+    bar = document.createElement("div");
+    bar.id = "aa-status-bar";
+    bar.className = "aa-status-bar";
+    bar.dataset.state = "idle";
+    bar.textContent = "自动答题助手：未识别";
+    const firstQuestion = document.querySelector(".que, fieldset, [class*=question], [id*=question]");
+    if (firstQuestion?.parentNode) {
+      firstQuestion.parentNode.insertBefore(bar, firstQuestion);
+    } else {
+      document.body.insertBefore(bar, document.body.firstChild);
+    }
+    return bar;
+  }
+
+  function statusText(state, detail) {
+    if (state === "scanning") {
+      const count = Number(detail.detected || 0);
+      return count ? "自动答题助手：识别中 · 已发现 " + count + " 道题" : "自动答题助手：识别中";
+    }
+    if (state === "done") {
+      const detected = Number(detail.detected || 0);
+      const answered = Number(detail.answered || 0);
+      return "自动答题助手：识别完成 · " + answered + "/" + detected + " 已给出答案";
+    }
+    return "自动答题助手：" + (detail.message || "未识别");
   }
 
   // Build badge with answer text: "✅ B 92%"
@@ -397,7 +443,7 @@
     return union === 0 ? 0 : inter / union;
   }
 
-  root.AutoAnswer.Annotator = { annotateChoice, annotateFill, annotateText, annotateReferenceOnly, markFailed };
+  root.AutoAnswer.Annotator = { annotateChoice, annotateFill, annotateText, annotateReferenceOnly, markFailed, updateStatus };
 })();
 
 

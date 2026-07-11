@@ -35,8 +35,8 @@
 ### 技术支持
 
 - 支持 Chrome 和 Edge 浏览器。
-- 当前版本：1.3.0
-- 1.3.0 adds local PDF/DOCX parsing for the material library. Parsed documents stay local; the extension stores extracted text/Markdown chunks and citations, not the original files.
+- 当前版本：1.4.5
+- 1.4.5 adds a fully local lightweight retrieval/ranking layer for uploaded materials. It improves no-API reference answers and keeps uploaded materials local as extracted text/Markdown chunks and citations.
 - 测试环境：XJTLU Moodle Quiz 页面。
 - 如有问题或改进建议，请加 QQ：3923636786。
 
@@ -49,7 +49,7 @@ Productivity / Education
 1. Extension popup with diagnostic panel
 2. Settings page showing material folders and AI configuration
 3. Question detection on a quiz page with auto-annotated answers
-4. Floating panel on a quiz page
+4. In-page status bar showing detection progress
 5. Local question bank and material library statistics
 
 ## Supported Locales
