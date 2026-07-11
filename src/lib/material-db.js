@@ -301,7 +301,7 @@
   }
 
   function groupBlocks(blocks, format) {
-    if (format === "pdf") return blocks.map(normalizeInputBlock);
+    if (format === "pdf" || format === "pptx" || format === "spreadsheet") return blocks.map(normalizeInputBlock);
     const groups = [];
     blocks.map(normalizeInputBlock).forEach((block) => {
       const headingKey = block.headingPath.join("\u0000");
@@ -344,7 +344,7 @@
       : [];
     if (!blocks.length) throw new Error("No readable text found");
     return {
-      format: ["pdf", "docx", "text"].includes(document.format) ? document.format : "text",
+      format: ["pdf", "docx", "pptx", "spreadsheet", "text"].includes(document.format) ? document.format : "text",
       parserVersion: Number(document.parserVersion || 1),
       pageCount: Number.isFinite(document.pageCount) ? document.pageCount : null,
       textLength: Number(document.textLength || blocks.reduce((sum, block) => sum + block.text.length, 0)),

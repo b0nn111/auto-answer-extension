@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
 
 const root = process.cwd();
@@ -173,6 +174,37 @@ function testMaterialCitationFormatting() {
     pageNumber: 3,
   });
   assert.equal(citation, "Calculus / Lecture 1.pdf / \u7b2c3\u9875");
+}
+
+async function testMaterialParserHelpers() {
+  globalThis.DOMMatrix ||= class {};
+  globalThis.ImageData ||= class {};
+  globalThis.Path2D ||= class {};
+  globalThis.navigator ||= { userAgent: "Node", platform: "Win32" };
+
+  const parserModule = await import(pathToFileURL(root + "/src/lib/material-parser.mjs"));
+  const { MaterialParser, parseDelimitedRows, spreadsheetRowsToBlocks } = parserModule;
+
+  assert.equal(MaterialParser.detectFormat({ name: "lecture.pptx", type: "" }), "pptx");
+  assert.equal(MaterialParser.detectFormat({ name: "scores.xlsx", type: "" }), "spreadsheet");
+  assert.equal(MaterialParser.detectFormat({ name: "scores.csv", type: "text/csv" }), "spreadsheet");
+  assert.equal(MaterialParser.detectFormat({ name: "old.xls", type: "" }), "unsupported");
+
+  assert.deepEqual(parseDelimitedRows('name,answer\n"rate, change","A ""quoted"" value"', ","), [
+    ["name", "answer"],
+    ["rate, change", 'A "quoted" value'],
+  ]);
+  assert.deepEqual(parseDelimitedRows("topic\tvalue\ncalculus\tderivative", "\t"), [
+    ["topic", "value"],
+    ["calculus", "derivative"],
+  ]);
+
+  const rows = Array.from({ length: 41 }, (_, index) => ["Row " + (index + 1), "value"]);
+  const blocks = spreadsheetRowsToBlocks("Sheet1", rows);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].paragraphStart, 1);
+  assert.equal(blocks[1].paragraphStart, 41);
+  assert.ok(blocks[0].markdown.includes("Row 40: Row 40 | value"));
 }
 
 async function testReferenceOnlyFromServiceWorker() {
@@ -453,6 +485,7 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testExactMatchSkipsFuzzySearch();
   await testConsensusAndMetrics();
   testMaterialCitationFormatting();
+  await testMaterialParserHelpers();
   await testReferenceOnlyFromServiceWorker();
   await testConflictWarning();
   await testQuestionConcurrencyLimit();

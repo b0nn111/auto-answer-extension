@@ -158,8 +158,8 @@
   }
 
   function renderFile(file) {
-    const format = ({ pdf: "PDF", docx: "DOCX", text: "文本" })[file.format] || "文本";
-    const location = file.pageCount ? " · " + file.pageCount + " 页" : "";
+    const format = ({ pdf: "PDF", docx: "DOCX", pptx: "PPTX", spreadsheet: "表格", text: "文本" })[file.format] || "文本";
+    const location = file.pageCount ? " · " + file.pageCount + (file.format === "pptx" ? " 张幻灯片" : " 页") : "";
     return [
       '<div class="material-file" data-file-id="' + escapeAttr(file.id) + '">',
       '  <label class="inline-check"><input type="checkbox" data-action="toggle-file" ' + (file.enabled ? "checked" : "") + "> " + escapeHtml(file.name) + "</label>",
@@ -269,7 +269,7 @@
             { replaceFileId: existing?.id || "" }
           );
           item.state = "done";
-          item.detail = document.pageCount ? "完成 · " + document.pageCount + " 页" : "完成";
+          item.detail = importDoneDetail(document);
           success++;
         } catch (error) {
           item.state = "error";
@@ -306,6 +306,13 @@
       '<span class="material-import-state">' + escapeHtml(item.detail) + '</span>' +
       '</div>'
     ).join("");
+  }
+
+  function importDoneDetail(document) {
+    if (document?.format === "pptx" && document.pageCount) return "完成 · " + document.pageCount + " 张幻灯片";
+    if (document?.format === "pdf" && document.pageCount) return "完成 · " + document.pageCount + " 页";
+    if (document?.format === "spreadsheet") return "完成 · 表格";
+    return "完成";
   }
 
   function waitForMaterialParser() {
