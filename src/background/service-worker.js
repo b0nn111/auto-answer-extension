@@ -211,31 +211,6 @@
       materials: summarizeMaterials(materialContext),
     });
 
-    if (MaterialAnswerer && materialContext.length > 0) {
-      const materialAnswer = await measureSource(
-        "material_answer",
-        () => MaterialAnswerer.answer(q, materialContext),
-        (value) => value?.success ? "success" : "miss"
-      );
-      await writeDebugLog({
-        event: "material_answer",
-        questionId: q.id,
-        outcome: materialAnswer?.success ? "success" : "miss",
-        answerPreview: materialAnswer?.success ? sanitizeText(materialAnswer.answer, 100) : "",
-        confidence: materialAnswer?.confidence || 0,
-        warning: sanitizeText(materialAnswer?.warning || "", 120),
-        scores: summarizeMaterialScores(materialAnswer?.debug?.scores),
-      });
-      if (materialAnswer?.success) {
-        candidates.push(makeCandidate(q, materialAnswer.answer, Types.ANSWER_SOURCE.MATERIAL, materialAnswer.confidence, {
-          displayAsText: materialAnswer.displayAsText === true,
-          materials: materialAnswer.materials,
-          provider: Types.ANSWER_SOURCE.MATERIAL,
-          warning: materialAnswer.warning,
-        }));
-      }
-    }
-
     if (settings.freeSearchEnabled) {
       const searchResult = await measureSource(
         "free_search",
@@ -300,6 +275,17 @@
         console.log("[答题助手] AI API 请求失败:", sanitizeError(aiResult.error));
       }
     }
+
+    if (hasAiAnswerCandidate(candidates)) {
+      await writeDebugLog({
+        event: "material_answer_skipped",
+        questionId: q.id,
+        reason: "ai_answer_used_materials_as_rag",
+      });
+    } else {
+      await addMaterialFallbackCandidate(q, materialContext, candidates);
+    }
+
     const ranked = rankCandidates(candidates);
     if (ranked.length > 0) {
       const best = ranked[0];
@@ -352,6 +338,40 @@
       reason: "no_source_returned_answer",
     });
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
+  }
+
+  async function addMaterialFallbackCandidate(q, materialContext, candidates) {
+    if (!MaterialAnswerer || !materialContext.length) return;
+    const materialAnswer = await measureSource(
+      "material_answer",
+      () => MaterialAnswerer.answer(q, materialContext),
+      (value) => value?.success ? "success" : "miss"
+    );
+    await writeDebugLog({
+      event: "material_answer",
+      questionId: q.id,
+      mode: "local_similarity_fallback",
+      outcome: materialAnswer?.success ? "success" : "miss",
+      answerPreview: materialAnswer?.success ? sanitizeText(materialAnswer.answer, 100) : "",
+      confidence: materialAnswer?.confidence || 0,
+      warning: sanitizeText(materialAnswer?.warning || "", 120),
+      scores: summarizeMaterialScores(materialAnswer?.debug?.scores),
+    });
+    if (materialAnswer?.success) {
+      candidates.push(makeCandidate(q, materialAnswer.answer, Types.ANSWER_SOURCE.MATERIAL, materialAnswer.confidence, {
+        displayAsText: materialAnswer.displayAsText === true,
+        materials: materialAnswer.materials,
+        provider: Types.ANSWER_SOURCE.MATERIAL,
+        warning: materialAnswer.warning,
+      }));
+    }
+  }
+
+  function hasAiAnswerCandidate(candidates) {
+    return candidates.some((candidate) =>
+      candidate.provider === Types.ANSWER_SOURCE.AI_API ||
+      candidate.provider === Types.ANSWER_SOURCE.OLLAMA
+    );
   }
 
   function makeCandidate(q, answer, source, confidence, extra) {

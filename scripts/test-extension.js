@@ -343,6 +343,36 @@ async function testMaterialAliceSamplePageMojibakeQuestions() {
   assert.ok(q1Scores.some((item) => item.letter === "B" && item.score > 0.9));
 }
 
+async function testMaterialAnswerIsFallbackWhenAiSucceeds() {
+  const background = createBackground({
+    aiEnabled: true,
+    aiResult: { success: true, answer: "C. peach", confidence: 0.7 },
+    materials: [{
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit,apple,Alice wrote this in the Monday reading log",
+      citation: "Alice / facts.csv",
+      score: 0.9,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{
+      id: "q1",
+      type: "choice",
+      questionText: "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+      options: ["A. banana", "B. apple", "C. peach", "D. pear"],
+    }],
+  });
+  assert.equal(results[0].answer, "C. peach");
+  assert.equal(results[0].source, "material_ai");
+  assert.deepEqual(Array.from(results[0].optionLetters), ["C"]);
+
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.ok(exported.entries.some((entry) => entry.event === "material_answer_skipped"));
+  assert.equal(exported.entries.some((entry) => entry.event === "material_answer" && entry.mode === "local_similarity_fallback"), false);
+}
+
 async function testWeakMaterialEvidenceStaysReferenceOnly() {
   const background = createBackground({
     materials: [{
@@ -674,6 +704,7 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testMaterialFillAnswerFromServiceWorker();
   await testMaterialAliceMixedLanguageQuestions();
   await testMaterialAliceSamplePageMojibakeQuestions();
+  await testMaterialAnswerIsFallbackWhenAiSucceeds();
   await testWeakMaterialEvidenceStaysReferenceOnly();
   await testConflictWarning();
   await testDebugLogExportLifecycle();
