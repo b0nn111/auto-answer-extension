@@ -47,6 +47,7 @@
     DEFAULT_AI_API_URL: "https://api.deepseek.com/v1",
     DEFAULT_AI_MODEL: "deepseek-chat",
     DEFAULT_FREE_SEARCH_URL: "https://study.jszkk.com/api/open/seek",
+    DEFAULT_MATERIAL_FALLBACK_MIN_CONFIDENCE: 0.55,
     FUZZY_MATCH_THRESHOLD: 0.85,
     CACHE_LIMIT: 10000,
     AI_API_TIMEOUT_MS: 15000,

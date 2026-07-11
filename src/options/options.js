@@ -18,6 +18,8 @@
       "deepseekKey",
       "freeSearchEnabled",
       "freeSearchUrl",
+      "materialFallbackEnabled",
+      "materialFallbackMinConfidence",
     ]);
 
     if (stored.ollamaUrl) $("ollamaUrl").value = stored.ollamaUrl;
@@ -27,6 +29,8 @@
     if (stored.aiApiKey || stored.deepseekKey) $("aiApiKey").value = stored.aiApiKey || stored.deepseekKey;
     $("freeSearchEnabled").checked = stored.freeSearchEnabled === true;
     if (stored.freeSearchUrl) $("freeSearchUrl").value = stored.freeSearchUrl;
+    $("materialFallbackEnabled").checked = stored.materialFallbackEnabled !== false;
+    $("materialFallbackMinConfidence").value = Math.round(normalizeMaterialFallbackMinConfidence(stored.materialFallbackMinConfidence) * 100);
   }
 
   async function saveSettings() {
@@ -38,6 +42,8 @@
       aiApiKey: $("aiApiKey").value.trim(),
       freeSearchEnabled: $("freeSearchEnabled").checked,
       freeSearchUrl: $("freeSearchUrl").value.trim() || Types.DEFAULT_FREE_SEARCH_URL,
+      materialFallbackEnabled: $("materialFallbackEnabled").checked,
+      materialFallbackMinConfidence: normalizeMaterialFallbackMinConfidence(Number($("materialFallbackMinConfidence").value) / 100),
     };
 
     await chrome.storage.sync.set(settings);
@@ -432,6 +438,12 @@
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  function normalizeMaterialFallbackMinConfidence(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return Types.DEFAULT_MATERIAL_FALLBACK_MIN_CONFIDENCE;
+    return Math.max(0.3, Math.min(0.9, number));
   }
 
   document.addEventListener("DOMContentLoaded", () => {

@@ -43,6 +43,10 @@ h2 {
   margin-bottom: 12px;
 }
 
+.compact-field input[type="number"] {
+  max-width: 120px;
+}
+
 label {
   display: block;
   font-size: 13px;
@@ -54,6 +58,7 @@ label {
 input[type="url"],
 input[type="password"],
 input[type="text"],
+input[type="number"],
 input[type="file"],
 select {
   width: 100%;

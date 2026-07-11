@@ -21,6 +21,8 @@
     aiApiUrl: Types.DEFAULT_AI_API_URL, aiApiKey: "", aiApiModel: Types.DEFAULT_AI_MODEL,
     freeSearchEnabled: false,
     freeSearchUrl: Types.DEFAULT_FREE_SEARCH_URL,
+    materialFallbackEnabled: true,
+    materialFallbackMinConfidence: Types.DEFAULT_MATERIAL_FALLBACK_MIN_CONFIDENCE,
   };
   const sourceMetrics = {};
   const MAX_QUESTION_CONCURRENCY = 4;
@@ -32,7 +34,7 @@
 
   async function loadSettings() {
     try {
-      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey", "freeSearchEnabled", "freeSearchUrl"]);
+      const s = await chrome.storage.sync.get(["ollamaUrl", "ollamaModel", "aiApiUrl", "aiApiKey", "aiApiModel", "deepseekKey", "freeSearchEnabled", "freeSearchUrl", "materialFallbackEnabled", "materialFallbackMinConfidence"]);
       if (s.ollamaUrl) settings.ollamaUrl = s.ollamaUrl;
       if (s.ollamaModel) settings.ollamaModel = s.ollamaModel;
       if (s.aiApiUrl) settings.aiApiUrl = s.aiApiUrl;
@@ -40,6 +42,8 @@
       if (s.aiApiModel) settings.aiApiModel = s.aiApiModel;
       if (s.freeSearchEnabled !== undefined) settings.freeSearchEnabled = s.freeSearchEnabled === true;
       if (s.freeSearchUrl) settings.freeSearchUrl = s.freeSearchUrl;
+      if (s.materialFallbackEnabled !== undefined) settings.materialFallbackEnabled = s.materialFallbackEnabled === true;
+      if (s.materialFallbackMinConfidence !== undefined) settings.materialFallbackMinConfidence = normalizeMaterialFallbackMinConfidence(s.materialFallbackMinConfidence);
       // Migrate old deepseekKey setting
       if (!settings.aiApiKey && s.deepseekKey) settings.aiApiKey = s.deepseekKey;
     } catch (_) {}
@@ -51,7 +55,7 @@
         handleDetectQuestions(msg.questions, sendResponse);
         return true;
       case Types.MSG_TYPE.SETTINGS_UPDATED:
-        settings = { ...settings, ...msg.settings };
+        settings = normalizeSettings({ ...settings, ...msg.settings });
         sendResponse({ ok: true });
         break;
       case Types.MSG_TYPE.GET_STATS:
@@ -120,6 +124,14 @@
       const aiErr = settings.aiApiKey ? "自检异常" : "未配置";
       sendResponse({ aiApi: { configured: !!settings.aiApiKey, connected: false, error: aiErr }, ollama: { running: false, models: 0 }, freeSearch: { enabled: settings.freeSearchEnabled === true, url: settings.freeSearchUrl }, materials: { folders: 0, enabledFolders: 0, files: 0, enabledFiles: 0, chunks: 0 }, database: { available: false, totalCached: 0, totalMatches: 0 }, sourceMetrics: snapshotMetrics() });
     }
+  }
+
+  function normalizeSettings(nextSettings) {
+    return {
+      ...nextSettings,
+      materialFallbackEnabled: nextSettings.materialFallbackEnabled === true,
+      materialFallbackMinConfidence: normalizeMaterialFallbackMinConfidence(nextSettings.materialFallbackMinConfidence),
+    };
   }
 
   async function handleMaterialLibrary(sendResponse) {
@@ -342,6 +354,14 @@
 
   async function addMaterialFallbackCandidate(q, materialContext, candidates) {
     if (!MaterialAnswerer || !materialContext.length) return;
+    if (settings.materialFallbackEnabled !== true) {
+      await writeDebugLog({
+        event: "material_answer_skipped",
+        questionId: q.id,
+        reason: "local_similarity_fallback_disabled",
+      });
+      return;
+    }
     const materialAnswer = await measureSource(
       "material_answer",
       () => MaterialAnswerer.answer(q, materialContext),
@@ -356,8 +376,20 @@
       confidence: materialAnswer?.confidence || 0,
       warning: sanitizeText(materialAnswer?.warning || "", 120),
       scores: summarizeMaterialScores(materialAnswer?.debug?.scores),
+      minConfidence: settings.materialFallbackMinConfidence,
     });
     if (materialAnswer?.success) {
+      if (Number(materialAnswer.confidence || 0) < settings.materialFallbackMinConfidence) {
+        await writeDebugLog({
+          event: "material_answer_rejected",
+          questionId: q.id,
+          reason: "below_min_confidence",
+          confidence: materialAnswer.confidence || 0,
+          minConfidence: settings.materialFallbackMinConfidence,
+          answerPreview: sanitizeText(materialAnswer.answer, 100),
+        });
+        return;
+      }
       candidates.push(makeCandidate(q, materialAnswer.answer, Types.ANSWER_SOURCE.MATERIAL, materialAnswer.confidence, {
         displayAsText: materialAnswer.displayAsText === true,
         materials: materialAnswer.materials,
@@ -365,6 +397,12 @@
         warning: materialAnswer.warning,
       }));
     }
+  }
+
+  function normalizeMaterialFallbackMinConfidence(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return Types.DEFAULT_MATERIAL_FALLBACK_MIN_CONFIDENCE;
+    return Math.max(0.3, Math.min(0.9, number));
   }
 
   function hasAiAnswerCandidate(candidates) {

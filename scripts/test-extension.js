@@ -120,6 +120,8 @@ function createBackground(config) {
         sync: { get: async () => ({
           freeSearchEnabled: config.freeEnabled === true,
           aiApiKey: config.aiEnabled === true ? "test-key" : "",
+          materialFallbackEnabled: config.materialFallbackEnabled === false ? false : true,
+          materialFallbackMinConfidence: config.materialFallbackMinConfidence,
         }) },
         local: {
           get: async (key) => key ? { [key]: localStore[key] } : { ...localStore },
@@ -371,6 +373,60 @@ async function testMaterialAnswerIsFallbackWhenAiSucceeds() {
   const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
   assert.ok(exported.entries.some((entry) => entry.event === "material_answer_skipped"));
   assert.equal(exported.entries.some((entry) => entry.event === "material_answer" && entry.mode === "local_similarity_fallback"), false);
+}
+
+async function testMaterialFallbackCanBeDisabled() {
+  const background = createBackground({
+    materialFallbackEnabled: false,
+    materials: [{
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit,apple,Alice wrote this in the Monday reading log",
+      citation: "Alice / facts.csv",
+      score: 0.9,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{
+      id: "q1",
+      type: "choice",
+      questionText: "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+      options: ["A. banana", "B. apple", "C. peach", "D. pear"],
+    }],
+  });
+  assert.equal(results[0].referenceOnly, true);
+  assert.equal(results[0].answer, "");
+
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.ok(exported.entries.some((entry) => entry.reason === "local_similarity_fallback_disabled"));
+}
+
+async function testMaterialFallbackRespectsMinimumConfidence() {
+  const background = createBackground({
+    materialFallbackMinConfidence: 0.9,
+    materials: [{
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit,apple,Alice wrote this in the Monday reading log",
+      citation: "Alice / facts.csv",
+      score: 0.9,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{
+      id: "q1",
+      type: "choice",
+      questionText: "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+      options: ["A. banana", "B. apple", "C. peach", "D. pear"],
+    }],
+  });
+  assert.equal(results[0].referenceOnly, true);
+  assert.equal(results[0].answer, "");
+
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.ok(exported.entries.some((entry) => entry.event === "material_answer_rejected"));
 }
 
 async function testWeakMaterialEvidenceStaysReferenceOnly() {
@@ -705,6 +761,8 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testMaterialAliceMixedLanguageQuestions();
   await testMaterialAliceSamplePageMojibakeQuestions();
   await testMaterialAnswerIsFallbackWhenAiSucceeds();
+  await testMaterialFallbackCanBeDisabled();
+  await testMaterialFallbackRespectsMinimumConfidence();
   await testWeakMaterialEvidenceStaysReferenceOnly();
   await testConflictWarning();
   await testDebugLogExportLifecycle();

@@ -52,6 +52,19 @@
         你可以创建课程文件夹，例如“微积分”“线性代数”，再把讲义、作业、笔记放进去。答题时只会检索已启用的文件夹和文件。
       </p>
 
+      <label class="checkbox-row" for="materialFallbackEnabled">
+        <span>
+          <strong>启用无 AI 本地资料参考答案</strong>
+          <em>有 AI 成功回答时资料只作为 RAG 上下文；没有 AI 答案时，才按相似度给参考答案。</em>
+        </span>
+        <input type="checkbox" id="materialFallbackEnabled">
+      </label>
+      <div class="field compact-field">
+        <label for="materialFallbackMinConfidence">本地参考答案最低概率</label>
+        <input type="number" id="materialFallbackMinConfidence" min="30" max="90" step="5" value="55">
+        <p class="hint">低于这个概率只显示资料引用，不直接给答案。</p>
+      </div>
+
       <div class="material-create">
         <input type="text" id="folderName" placeholder="新文件夹名称，例如：微积分">
         <button id="createFolder" class="btn-sm">创建文件夹</button>
