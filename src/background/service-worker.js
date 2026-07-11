@@ -5,6 +5,7 @@
   "../lib/db.js",
   "../lib/material-db.js",
   "../lib/material-retriever.js",
+  "../lib/material-answerer.js",
   "../lib/websearch.js",
   "../lib/ollama.js",
   "../lib/deepseek.js"
@@ -12,7 +13,7 @@
 
 (function () {
   "use strict";
-  const { Types, DB, Matcher, AnswerNormalizer, MaterialDB, MaterialRetriever, WebSearch, Ollama, AiApi } = self.AutoAnswer;
+  const { Types, DB, Matcher, AnswerNormalizer, MaterialDB, MaterialRetriever, MaterialAnswerer, WebSearch, Ollama, AiApi } = self.AutoAnswer;
 
   let settings = {
     ollamaUrl: Types.DEFAULT_OLLAMA_URL,
@@ -23,6 +24,9 @@
   };
   const sourceMetrics = {};
   const MAX_QUESTION_CONCURRENCY = 4;
+  const DEBUG_LOG_KEY = "debugLogs";
+  const MAX_DEBUG_LOG_ENTRIES = 300;
+  let debugLogWriteQueue = Promise.resolve();
 
   const settingsReady = loadSettings();
 
@@ -64,6 +68,12 @@
         return true;
       case Types.MSG_TYPE.RUN_DIAGNOSTIC:
         handleDiagnostic(sendResponse);
+        return true;
+      case Types.MSG_TYPE.EXPORT_DEBUG_LOGS:
+        handleExportDebugLogs(sendResponse);
+        return true;
+      case Types.MSG_TYPE.CLEAR_DEBUG_LOGS:
+        clearDebugLogs().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
         return true;
       case Types.MSG_TYPE.GET_MATERIAL_LIBRARY:
         handleMaterialLibrary(sendResponse);
@@ -124,6 +134,31 @@
     }
   }
 
+  async function handleExportDebugLogs(sendResponse) {
+    try {
+      await debugLogWriteQueue.catch(() => {});
+      const store = await readDebugLogStore();
+      const current = Array.isArray(store.current) ? store.current : [];
+      const previous = Array.isArray(store.previous) ? store.previous : [];
+      const entries = current.length ? current : previous;
+      const fromPrevious = current.length === 0 && previous.length > 0;
+
+      await saveDebugLogStore({
+        current: [],
+        previous: current.length ? current.slice(-MAX_DEBUG_LOG_ENTRIES) : [],
+      });
+      sendResponse({
+        ok: true,
+        entries,
+        count: entries.length,
+        fromPrevious,
+        retainedUntilNextExport: current.length > 0,
+      });
+    } catch (err) {
+      sendResponse({ ok: false, entries: [], count: 0, error: sanitizeError(err?.message || err) });
+    }
+  }
+
   async function handleDetectQuestions(questions, sendResponse) {
     try {
       await settingsReady;
@@ -141,6 +176,7 @@
   }
 
   async function processQuestion(q) {
+    await writeDebugLog({ event: "question_start", question: summarizeQuestion(q) });
     const hash = await Matcher.hashText(q.questionText);
     const candidates = [];
     const cacheResult = await measureSource("cache", async () => {
@@ -151,6 +187,13 @@
       }
       return DB.fuzzySearch(q.questionText);
     }, (value) => value ? "success" : "miss");
+    await writeDebugLog({
+      event: "cache_result",
+      questionId: q.id,
+      outcome: cacheResult ? "hit" : "miss",
+      answerPreview: cacheResult ? sanitizeText(cacheResult.answer, 80) : "",
+      confidence: cacheResult?.confidence || 0,
+    });
     if (cacheResult) {
       candidates.push(makeCandidate(q, cacheResult.answer, Types.ANSWER_SOURCE.CACHE, cacheResult.confidence, { provider: Types.ANSWER_SOURCE.CACHE }));
     }
@@ -160,6 +203,38 @@
       () => MaterialRetriever.retrieve(q.questionText, q.options),
       (value) => value && value.length ? "success" : "miss"
     ) || [];
+    await writeDebugLog({
+      event: "materials_retrieved",
+      questionId: q.id,
+      outcome: materialContext.length ? "hit" : "miss",
+      count: materialContext.length,
+      materials: summarizeMaterials(materialContext),
+    });
+
+    if (MaterialAnswerer && materialContext.length > 0) {
+      const materialAnswer = await measureSource(
+        "material_answer",
+        () => MaterialAnswerer.answer(q, materialContext),
+        (value) => value?.success ? "success" : "miss"
+      );
+      await writeDebugLog({
+        event: "material_answer",
+        questionId: q.id,
+        outcome: materialAnswer?.success ? "success" : "miss",
+        answerPreview: materialAnswer?.success ? sanitizeText(materialAnswer.answer, 100) : "",
+        confidence: materialAnswer?.confidence || 0,
+        warning: sanitizeText(materialAnswer?.warning || "", 120),
+        scores: summarizeMaterialScores(materialAnswer?.debug?.scores),
+      });
+      if (materialAnswer?.success) {
+        candidates.push(makeCandidate(q, materialAnswer.answer, Types.ANSWER_SOURCE.MATERIAL, materialAnswer.confidence, {
+          displayAsText: materialAnswer.displayAsText === true,
+          materials: materialAnswer.materials,
+          provider: Types.ANSWER_SOURCE.MATERIAL,
+          warning: materialAnswer.warning,
+        }));
+      }
+    }
 
     if (settings.freeSearchEnabled) {
       const searchResult = await measureSource(
@@ -167,6 +242,14 @@
         () => WebSearch.search(q.stemText || q.questionText, { baseUrl: settings.freeSearchUrl, options: q.options, multiple: q.multiple === true }),
         classifySearchResult
       );
+      await writeDebugLog({
+        event: "free_search",
+        questionId: q.id,
+        outcome: searchResult?.success ? "success" : classifySearchResult(searchResult),
+        answerPreview: searchResult?.success ? sanitizeText(searchResult.answer, 100) : "",
+        confidence: searchResult?.confidence || 0,
+        error: sanitizeError(searchResult?.error || ""),
+      });
       if (searchResult?.success) {
         candidates.push(makeCandidate(q, searchResult.answer, Types.ANSWER_SOURCE.FREE_SEARCH, searchResult.confidence, {
           displayAsText: searchResult.displayAsText === true,
@@ -174,7 +257,7 @@
           provider: Types.ANSWER_SOURCE.FREE_SEARCH,
         }));
       } else if (searchResult) {
-        console.log("[答题助手] 免费搜题未命中:", searchResult.error);
+        console.log("[答题助手] 免费搜题未命中:", sanitizeError(searchResult.error));
       }
     }
 
@@ -184,6 +267,14 @@
         if (!running) return { success: false, unavailable: true, error: "未运行" };
         return Ollama.ask(q.questionText, { baseUrl: settings.ollamaUrl, model: settings.ollamaModel, options: q.options, context: materialContext, multiple: q.multiple === true });
       }, (value) => value?.success ? "success" : (value?.unavailable ? "miss" : "error"));
+      await writeDebugLog({
+        event: "ollama",
+        questionId: q.id,
+        outcome: ollamaResult?.success ? "success" : (ollamaResult?.unavailable ? "miss" : "error"),
+        answerPreview: ollamaResult?.success ? sanitizeText(ollamaResult.answer, 100) : "",
+        confidence: ollamaResult?.confidence || 0,
+        error: sanitizeError(ollamaResult?.error || ""),
+      });
       if (ollamaResult?.success) {
         candidates.push(makeCandidate(q, ollamaResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.OLLAMA, ollamaResult.confidence, { materials: materialContext, provider: Types.ANSWER_SOURCE.OLLAMA }));
       }
@@ -195,15 +286,32 @@
         () => AiApi.ask(q.questionText, { apiKey: settings.aiApiKey, baseUrl: settings.aiApiUrl, model: settings.aiApiModel, options: q.options, context: materialContext, multiple: q.multiple === true }),
         (value) => value?.success ? "success" : "error"
       );
+      await writeDebugLog({
+        event: "ai_api",
+        questionId: q.id,
+        outcome: aiResult?.success ? "success" : "error",
+        answerPreview: aiResult?.success ? sanitizeText(aiResult.answer, 100) : "",
+        confidence: aiResult?.confidence || 0,
+        error: sanitizeError(aiResult?.error || ""),
+      });
       if (aiResult?.success) {
         candidates.push(makeCandidate(q, aiResult.answer, materialContext.length ? Types.ANSWER_SOURCE.MATERIAL_AI : Types.ANSWER_SOURCE.AI_API, aiResult.confidence, { materials: materialContext, provider: Types.ANSWER_SOURCE.AI_API }));
       } else if (aiResult) {
-        console.log("[答题助手] AI API 请求失败:", aiResult.error);
+        console.log("[答题助手] AI API 请求失败:", sanitizeError(aiResult.error));
       }
     }
     const ranked = rankCandidates(candidates);
     if (ranked.length > 0) {
       const best = ranked[0];
+      await writeDebugLog({
+        event: "final_answer",
+        questionId: q.id,
+        source: best.source,
+        provider: best.provider,
+        answerPreview: sanitizeText(best.answer, 120),
+        confidence: best.confidence,
+        candidates: ranked.map(summarizeCandidate),
+      });
       return {
         id: q.id,
         type: q.type,
@@ -220,6 +328,13 @@
       };
     }
     if (materialContext.length > 0) {
+      await writeDebugLog({
+        event: "final_reference_only",
+        questionId: q.id,
+        source: Types.ANSWER_SOURCE.MATERIAL,
+        reason: "materials_found_but_no_confident_answer",
+        count: materialContext.length,
+      });
       return {
         id: q.id,
         type: q.type,
@@ -231,6 +346,11 @@
         questionStem: q.stemText || q.questionText,
       };
     }
+    await writeDebugLog({
+      event: "final_failed",
+      questionId: q.id,
+      reason: "no_source_returned_answer",
+    });
     return { id: q.id, type: q.type, answer: "", source: Types.ANSWER_SOURCE.FAILED, confidence: 0 };
   }
 
@@ -255,9 +375,9 @@
       confidence: adjustedConfidence,
       baseConfidence: adjustedConfidence,
       displayAsText,
-      warning: displayAsText && q.type === Types.QUESTION_TYPE.CHOICE
-        ? (extra?.warning || "答案未能对应选项，按文本展示")
-        : "",
+      warning: extra?.warning || (displayAsText && q.type === Types.QUESTION_TYPE.CHOICE
+        ? "答案未能对应选项，按文本展示"
+        : ""),
       materials: extra?.materials || [],
     };
   }
@@ -364,7 +484,89 @@
   }
 
   function sanitizeError(error) {
-    return String(error || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    return sanitizeText(error, 160);
+  }
+
+  function sanitizeText(value, maxLength) {
+    return String(value || "")
+      .replace(/(api[_-]?key|authorization|bearer)\s*[:=]\s*[^\s,;]+/ig, "$1:[redacted]")
+      .replace(/[A-Za-z0-9+/_=-]{36,}/g, "[redacted]")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, maxLength || 120);
+  }
+
+  function summarizeQuestion(q) {
+    return {
+      id: q.id,
+      type: q.type,
+      multiple: q.multiple === true,
+      preview: sanitizeText(q.stemText || q.questionText, 160),
+      optionsCount: Array.isArray(q.options) ? q.options.length : 0,
+    };
+  }
+
+  function summarizeMaterials(materials) {
+    return (materials || []).slice(0, 5).map((item) => ({
+      citation: sanitizeText(item.citation || [item.folderName, item.fileName].filter(Boolean).join(" / "), 120),
+      score: Number(item.score || 0),
+      pageNumber: item.pageNumber || null,
+    }));
+  }
+
+  function summarizeCandidate(candidate) {
+    return {
+      source: candidate.source,
+      provider: candidate.provider,
+      confidence: candidate.confidence,
+      answerPreview: sanitizeText(candidate.answer, 80),
+      optionLetters: Array.from(candidate.optionLetters || []),
+    };
+  }
+
+  function summarizeMaterialScores(scores) {
+    return Array.isArray(scores)
+      ? scores.slice(0, 8).map((item) => ({
+        letter: item.letter,
+        optionText: sanitizeText(item.optionText, 60),
+        score: Number(item.score || 0),
+      }))
+      : [];
+  }
+
+  function writeDebugLog(entry) {
+    debugLogWriteQueue = debugLogWriteQueue.then(async () => {
+      const store = await readDebugLogStore();
+      const current = Array.isArray(store.current) ? store.current : [];
+      current.push({
+        ts: new Date().toISOString(),
+        ...entry,
+      });
+      await saveDebugLogStore({
+        current: current.slice(-MAX_DEBUG_LOG_ENTRIES),
+        previous: Array.isArray(store.previous) ? store.previous.slice(-MAX_DEBUG_LOG_ENTRIES) : [],
+      });
+    }).catch(() => {});
+    return debugLogWriteQueue;
+  }
+
+  async function readDebugLogStore() {
+    if (!chrome.storage?.local) return { current: [], previous: [] };
+    const result = await chrome.storage.local.get(DEBUG_LOG_KEY);
+    const store = result?.[DEBUG_LOG_KEY] || {};
+    return {
+      current: Array.isArray(store.current) ? store.current : [],
+      previous: Array.isArray(store.previous) ? store.previous : [],
+    };
+  }
+
+  async function saveDebugLogStore(store) {
+    if (!chrome.storage?.local) return;
+    await chrome.storage.local.set({ [DEBUG_LOG_KEY]: store });
+  }
+
+  async function clearDebugLogs() {
+    await saveDebugLogStore({ current: [], previous: [] });
   }
 
   async function mapWithConcurrency(items, limit, mapper) {
@@ -386,7 +588,7 @@
     }
     return {
       cache: "本地题库",
-      material: "本地资料库",
+      material: "本地资料参考",
       free_search: "公共搜题",
       ollama: "本地 AI",
       ai_api: "AI API",

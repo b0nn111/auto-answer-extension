@@ -76,6 +76,17 @@ body {
 .btn-primary:hover { background: #4f46e5; }
 .btn-secondary { color: #374151; background: #f3f4f6; border: 1px solid #e5e7eb; }
 .btn-secondary:hover { background: #e5e7eb; }
+.btn-primary:disabled, .btn-secondary:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.log-status {
+  min-height: 15px;
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+}
 
 .feedback-line {
   margin: 2px 0 4px;

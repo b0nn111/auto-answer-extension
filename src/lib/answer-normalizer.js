@@ -47,7 +47,7 @@
     const ordered = choices.slice().sort((a, b) => a.index - b.index);
     return {
       matched: true,
-      answer: ordered.map((choice) => choice.letter + ". " + choice.text).join("；"),
+      answer: ordered.map((choice) => choice.letter + ". " + choice.text).join("\uff1b"),
       letters: ordered.map((choice) => choice.letter),
       score,
     };
@@ -58,23 +58,23 @@
     const stripped = stripAnswerPrefix(answer).toUpperCase();
 
     if (multiple) {
-      const compact = stripped.match(/^([A-Z]{2,})(?:\s|$|[.。])/);
+      const compact = stripped.match(/^([A-Z]{2,})(?:\s|$|[.\u3002])/);
       if (compact) {
         const compactLetters = compact[1].split("");
         if (compactLetters.every((letter) => valid.has(letter))) return unique(compactLetters);
       }
 
-      const listed = stripped.match(/^([A-Z](?:\s*(?:[,，、;；/|+&#]|和|及|AND)\s*[A-Z])+)(?:\s|$|[.。])/);
+      const listed = stripped.match(/^([A-Z](?:\s*(?:[,，、;；/|+&#]|\u548c|\u53ca|AND)\s*[A-Z])+)(?:\s|$|[.\u3002])/);
       if (listed) {
         const listedLetters = listed[1]
-          .replace(/AND|和|及/g, ",")
+          .replace(/AND|\u548c|\u53ca/g, ",")
           .split(/\s*[,，、;；/|+&#]\s*/)
           .filter(Boolean);
         if (listedLetters.every((letter) => valid.has(letter))) return unique(listedLetters);
       }
 
       const formatted = [];
-      const formattedPattern = /(?:^|[;；\n])\s*([A-Z])\s*[.\)、]/g;
+      const formattedPattern = /(?:^|[,，;；\n])\s*([A-Z])\s*[.\)\]\u3001\uff09]/g;
       let formattedMatch;
       while ((formattedMatch = formattedPattern.exec(stripped)) !== null) {
         if (valid.has(formattedMatch[1])) formatted.push(formattedMatch[1]);
@@ -82,13 +82,13 @@
       if (formatted.length > 1) return unique(formatted);
     }
 
-    const single = stripped.match(/^([A-Z])(?:\s*[.\)、:]|\s*$)/);
+    const single = stripped.match(/^([A-Z])(?:\s*[.\)\]\u3001\uff09]|\s*$)/);
     return single && valid.has(single[1]) ? [single[1]] : [];
   }
 
   function parseOption(option, index) {
     const raw = String(option || "").trim();
-    const match = raw.match(/^([A-Za-z])(?:\s*[.\)、]|\s*$)\s*(.*)$/);
+    const match = raw.match(/^([A-Za-z])(?:\s*[.\)\]\u3001\uff09]|\s*$)\s*(.*)$/);
     const letter = match ? match[1].toUpperCase() : String.fromCharCode(65 + Number(index || 0));
     const text = match ? (match[2] || "").trim() : raw;
     return { raw, letter, text, normalized: normalize(text), index: Number(index || 0) };
@@ -97,7 +97,7 @@
   function stripAnswerPrefix(text) {
     return String(text || "")
       .trim()
-      .replace(/^\s*(?:(?:正确)?答案|answers?)\s*(?:是|为|are|is|[:：])?\s*/i, "");
+      .replace(/^\s*(?:(?:\u6b63\u786e)?\u7b54\u6848|answers?)\s*(?:\u662f|\u4e3a|are|is|[:\uff1a])?\s*/i, "");
   }
 
   function normalize(text) {

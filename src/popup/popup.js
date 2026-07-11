@@ -1,4 +1,8 @@
 ﻿document.addEventListener("DOMContentLoaded", () => {
+  const manifest = chrome.runtime.getManifest();
+  const versionEl = document.getElementById("version");
+  if (versionEl) versionEl.textContent = "v" + manifest.version;
+
   // Load toggle state
   chrome.storage.sync.get(["extensionEnabled"], (s) => {
     const enabled = s.extensionEnabled === true;
@@ -28,6 +32,7 @@
     chrome.runtime.openOptionsPage();
   });
   document.getElementById("rerun-btn").addEventListener("click", runDiagnostics);
+  document.getElementById("copy-logs-btn").addEventListener("click", copyDebugLogs);
   document.getElementById("scan-now-btn").addEventListener("click", async () => {
     await chrome.storage.sync.set({ extensionEnabled: true });
     updateToggleUI(true);
@@ -142,6 +147,60 @@ function setStatus(id, cls, text) {
   const iconMap = { ok: "✅", err: "❌", warn: "⚠️", loading: "⏳" };
   const iconEl = el.querySelector(".diag-icon");
   if (iconEl && iconMap[cls]) iconEl.textContent = iconMap[cls];
+}
+
+async function copyDebugLogs() {
+  const status = document.getElementById("log-status");
+  const button = document.getElementById("copy-logs-btn");
+  if (status) status.textContent = "正在导出...";
+  if (button) button.disabled = true;
+
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "EXPORT_DEBUG_LOGS" });
+    if (!result?.ok) throw new Error(result?.error || "导出失败");
+    await writeClipboardText(formatDebugLogs(result));
+    if (status) {
+      const label = result.fromPrevious ? "上一次日志" : "当前日志";
+      status.textContent = "已复制 " + label + " · " + result.count + " 条";
+    }
+  } catch (err) {
+    if (status) status.textContent = "日志复制失败：" + (err?.message || "未知错误");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function formatDebugLogs(result) {
+  const entries = Array.isArray(result.entries) ? result.entries : [];
+  const header = [
+    "自动答题助手诊断日志",
+    "导出时间: " + new Date().toISOString(),
+    "日志来源: " + (result.fromPrevious ? "上一次已输出日志，本次导出后清除" : "当前日志，导出后保留到下一次导出"),
+    "条数: " + entries.length,
+    "",
+  ];
+  if (!entries.length) {
+    return header.concat(["暂无可导出的日志"]).join("\n");
+  }
+  return header.concat(entries.map((entry, index) => {
+    return "[" + (index + 1) + "] " + JSON.stringify(entry, null, 2);
+  })).join("\n");
+}
+
+async function writeClipboardText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 

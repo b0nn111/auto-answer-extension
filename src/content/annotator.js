@@ -84,17 +84,17 @@
   // Build badge with answer text: "✅ B 92%"
   function sourceBadge(source, confidence, answerText) {
     const map = {
-      cache: { cls: "aa-badge--cache", label: "💾" },
-      material: { cls: "aa-badge--material", label: "📚" },
-      material_ai: { cls: "aa-badge--material-ai", label: "📚+AI" },
-      free_search: { cls: "aa-badge--free-search", label: "🔎" },
-      ollama: { cls: "aa-badge--ollama", label: "💻" },
-      ai_api: { cls: "aa-badge--deepseek", label: "🧠" },
+      cache: { cls: "aa-badge--cache", label: "💾", prefix: "✅" },
+      material: { cls: "aa-badge--material", label: "📚", prefix: "参考" },
+      material_ai: { cls: "aa-badge--material-ai", label: "📚+AI", prefix: "✅" },
+      free_search: { cls: "aa-badge--free-search", label: "🔎", prefix: "✅" },
+      ollama: { cls: "aa-badge--ollama", label: "💻", prefix: "✅" },
+      ai_api: { cls: "aa-badge--deepseek", label: "🧠", prefix: "✅" },
     };
     const m = map[source] || map.ollama;
     const answer = escapeHtml(formatAnswerForBadge(answerText));
     const pct = confidence ? " " + (confidence * 100).toFixed(0) + "%" : "";
-    return '<span class="aa-badge ' + m.cls + '">✅' + answer + pct + " " + m.label + "</span>";
+    return '<span class="aa-badge ' + m.cls + '">' + m.prefix + answer + pct + " " + m.label + "</span>";
   }
 
   // ── Annotate choice: put ✅ badge after the correct option ──
@@ -255,16 +255,22 @@
   }
 
   function appendCandidateToggle(container, result) {
-    if (!result.candidates || result.candidates.length <= 1) return;
+    const hasAlternatives = result.candidates && result.candidates.length > 1;
+    const hasReferences = Array.isArray(result.materials) && result.materials.length > 0;
+    if (!hasAlternatives && !hasReferences) return;
     const toggle = document.createElement("div");
     toggle.className = "aa-answer-toggle";
-    toggle.textContent = "📖 查看其他答案";
+    toggle.textContent = hasAlternatives ? "📖 查看其他答案" : "📚 查看资料引用";
     const body = document.createElement("div");
     body.className = "aa-answer-body";
     body.innerHTML = renderCandidateList(result);
     toggle.addEventListener("click", () => {
       body.classList.toggle("aa-open");
-      toggle.textContent = body.classList.contains("aa-open") ? "📖 收起答案" : "📖 查看其他答案";
+      if (body.classList.contains("aa-open")) {
+        toggle.textContent = hasAlternatives ? "📖 收起答案" : "📚 收起引用";
+      } else {
+        toggle.textContent = hasAlternatives ? "📖 查看其他答案" : "📚 查看资料引用";
+      }
     });
     container.appendChild(toggle);
     container.appendChild(body);
@@ -273,7 +279,7 @@
   function renderCandidateList(result) {
     const candidates = result.candidates && result.candidates.length
       ? result.candidates
-      : [{ answer: result.answer, source: result.source, sourceLabel: sourceLabel(result.source), confidence: result.confidence, warning: result.warning }];
+      : [{ answer: result.answer, source: result.source, sourceLabel: sourceLabel(result.source), confidence: result.confidence, warning: result.warning, materials: result.materials }];
     return candidates.map((item, index) => {
       const title = (index === 0 ? "最佳 · " : "") + (item.sourceLabel || sourceLabel(item.source));
       const pct = typeof item.confidence === "number" ? Math.round(item.confidence * 100) + "%" : "";
@@ -360,7 +366,7 @@
   function sourceLabel(source) {
     return {
       cache: "本地题库",
-      material: "本地资料库",
+      material: "本地资料参考",
       material_ai: "资料库+AI",
       free_search: "公共搜题",
       ollama: "本地 AI",

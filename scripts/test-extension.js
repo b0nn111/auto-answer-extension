@@ -58,6 +58,8 @@ function createBackground(config) {
       OLLAMA_CHECK: "OLLAMA_CHECK",
       OLLAMA_LIST_MODELS: "OLLAMA_LIST_MODELS",
       RUN_DIAGNOSTIC: "RUN_DIAGNOSTIC",
+      EXPORT_DEBUG_LOGS: "EXPORT_DEBUG_LOGS",
+      CLEAR_DEBUG_LOGS: "CLEAR_DEBUG_LOGS",
       GET_MATERIAL_LIBRARY: "GET_MATERIAL_LIBRARY",
       MATERIAL_CREATE_FOLDER: "MATERIAL_CREATE_FOLDER",
       MATERIAL_ADD_FILE: "MATERIAL_ADD_FILE",
@@ -83,6 +85,7 @@ function createBackground(config) {
     DEFAULT_FREE_SEARCH_URL: "https://example.test/search",
   };
   const { normalizer } = loadNormalizer();
+  const localStore = {};
   const DB = {
     getByHash: async () => config.exact || null,
     fuzzySearch: async () => { state.fuzzyCalls++; return config.fuzzy || null; },
@@ -113,15 +116,22 @@ function createBackground(config) {
       },
     } },
     chrome: {
-      storage: { sync: { get: async () => ({
-        freeSearchEnabled: config.freeEnabled === true,
-        aiApiKey: config.aiEnabled === true ? "test-key" : "",
-      }) } },
+      storage: {
+        sync: { get: async () => ({
+          freeSearchEnabled: config.freeEnabled === true,
+          aiApiKey: config.aiEnabled === true ? "test-key" : "",
+        }) },
+        local: {
+          get: async (key) => key ? { [key]: localStore[key] } : { ...localStore },
+          set: async (value) => { Object.assign(localStore, value); },
+        },
+      },
       runtime: { onMessage: { addListener: (fn) => { listener = fn; } } },
     },
     importScripts() {},
     console,
   };
+  vm.runInNewContext(read("src/lib/material-answerer.js"), context);
   vm.runInNewContext(read("src/background/service-worker.js"), context);
   return {
     state,
@@ -176,6 +186,30 @@ function testMaterialCitationFormatting() {
   assert.equal(citation, "Calculus / Lecture 1.pdf / \u7b2c3\u9875");
 }
 
+async function testMaterialRetrieverUsesQuestionAliases() {
+  const chunks = [
+    {
+      folderName: "Alice",
+      fileName: "noise.txt",
+      text: "Alice copied a map of the library and checked two graphs.",
+      paragraphStart: 1,
+    },
+    {
+      folderName: "Alice",
+      fileName: "facts.csv",
+      text: "favorite fruit,apple,Alice wrote this in the Monday reading log",
+      paragraphStart: 2,
+    },
+  ];
+  const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/material-retriever.js"), context);
+  const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
+    "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+    ["A. banana", "B. apple", "C. peach", "D. pear"]
+  );
+  assert.equal(refs[0].text, chunks[1].text);
+}
+
 async function testMaterialParserHelpers() {
   globalThis.DOMMatrix ||= class {};
   globalThis.ImageData ||= class {};
@@ -207,14 +241,117 @@ async function testMaterialParserHelpers() {
   assert.ok(blocks[0].markdown.includes("Row 40: Row 40 | value"));
 }
 
-async function testReferenceOnlyFromServiceWorker() {
+async function testMaterialChoiceAnswerFromServiceWorker() {
+  const background = createBackground({
+    materials: [{
+      folderName: "Calculus",
+      fileName: "Lecture 2.pdf",
+      text: "For polynomial derivatives, use the power rule.",
+      citation: "Calculus / Lecture 2.pdf / \u7b2c5\u9875",
+      pageNumber: 5,
+      score: 0.9,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{
+      id: "q1",
+      type: "choice",
+      questionText: "Which rule is used for polynomial derivatives?",
+      options: ["A. Product rule", "B. Power rule", "C. Chain rule"],
+    }],
+  });
+  assert.equal(results[0].answer, "B. Power rule");
+  assert.deepEqual(Array.from(results[0].optionLetters), ["B"]);
+  assert.equal(results[0].source, "material");
+  assert.equal(results[0].candidates[0].sourceLabel, "\u672c\u5730\u8d44\u6599\u53c2\u8003");
+  assert.match(results[0].warning, /\u672c\u5730\u8d44\u6599/);
+  assert.equal(results[0].materials.length, 1);
+}
+
+async function testMaterialFillAnswerFromServiceWorker() {
+  const background = createBackground({
+    materials: [{
+      folderName: "Calculus",
+      fileName: "Homework.xlsx",
+      text: "derivative of x^2: 2x",
+      citation: "Calculus / Homework.xlsx / Row 4",
+      score: 0.9,
+    }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{ id: "q1", type: "fill", questionText: "What is derivative of x^2?" }],
+  });
+  assert.equal(results[0].answer, "2x");
+  assert.equal(results[0].displayAsText, true);
+  assert.equal(results[0].source, "material");
+  assert.equal(results[0].materials.length, 1);
+}
+
+async function testMaterialAliceMixedLanguageQuestions() {
+  const materialText = [
+    "Alice's favorite fruit: apple.",
+    "For Tuesday lab, Alice packed apple slices and a blue notebook. She left the red umbrella in the dorm and refused orange soda.",
+    "locker code,silver-27,Used for Alice's small locker",
+    "quiet corner reason,near the window and away from music club rehearsal,The location helped Alice focus",
+    "rainy reading kit label,turquoise label,Written on the kit inventory sheet",
+  ].join("\n");
+  const background = createBackground({
+    materials: [{ folderName: "Alice", fileName: "facts.csv", text: materialText, citation: "Alice / facts.csv", score: 0.9 }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [
+      { id: "alice1", type: "choice", questionText: "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f", options: ["A. banana", "B. apple", "C. peach", "D. pear"] },
+      { id: "alice2", type: "choice", multiple: true, questionText: "\u0041\u006c\u0069\u0063\u0065 \u5468\u4e8c\u53bb\u5b9e\u9a8c\u5ba4\u65f6\u5e26\u4e86\u54ea\u4e9b\u4e1c\u897f\uff1f", options: ["A. apple slices", "B. blue notebook", "C. orange soda", "D. red umbrella"] },
+      { id: "alice3", type: "fill", questionText: "\u586b\u7a7a\uff1a\u0041\u006c\u0069\u0063\u0065 \u7684 locker code \u662f ____\u3002" },
+      { id: "alice4", type: "short_answer", questionText: "\u0041\u006c\u0069\u0063\u0065 \u4e3a\u4ec0\u4e48\u9009\u62e9\u56fe\u4e66\u9986\u7684 quiet corner\uff1f" },
+      { id: "alice5", type: "choice", questionText: "\u0041\u006c\u0069\u0063\u0065 \u7ed9\u201c\u96e8\u5929\u9605\u8bfb\u5305\u201d\u8d34\u4e86\u4ec0\u4e48\u989c\u8272\u7684\u6807\u7b7e\uff1f", options: ["A. crimson label", "B. turquoise label", "C. gold label", "D. violet label"] },
+    ],
+  });
+  assert.equal(results[0].answer, "B. apple");
+  assert.deepEqual(Array.from(results[1].optionLetters), ["A", "B"]);
+  assert.equal(results[2].answer, "silver-27");
+  assert.match(results[3].answer, /near the window/);
+  assert.equal(results[4].answer, "B. turquoise label");
+}
+
+async function testMaterialAliceSamplePageMojibakeQuestions() {
+  const materialText = [
+    read("work/v140-material-samples/alice-reading-log.txt"),
+    read("work/v140-material-samples/alice-facts.csv"),
+  ].join("\n");
+  const background = createBackground({
+    materials: [{ folderName: "Alice", fileName: "sample-files", text: materialText, citation: "Alice / sample-files", score: 0.4286 }],
+  });
+  const results = await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [
+      { id: "q_1", type: "choice", questionText: "Alice 鍠滄鍚冧粈涔堟按鏋滐紵", options: ["a. banana", "b. apple", "c. peach", "d. pear"] },
+      { id: "q_2", type: "choice", multiple: true, questionText: "Alice 鍛ㄤ簩鍘诲疄楠屽鏃跺甫浜嗗摢浜涗笢瑗匡紵", options: ["a. apple slices", "b. blue notebook", "c. orange soda", "d. red umbrella"] },
+    ],
+  });
+  assert.equal(results[0].answer, "B. apple");
+  assert.deepEqual(Array.from(results[0].optionLetters), ["B"]);
+  assert.deepEqual(Array.from(results[1].optionLetters), ["A", "B"]);
+  assert.ok(results[0].confidence > 0.7);
+  assert.ok(results[1].confidence > 0.7);
+
+  const exported = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  const q1Scores = exported.entries.find((entry) => entry.event === "material_answer" && entry.questionId === "q_1")?.scores || [];
+  assert.ok(q1Scores.some((item) => item.letter === "B" && item.score > 0.9));
+}
+
+async function testWeakMaterialEvidenceStaysReferenceOnly() {
   const background = createBackground({
     materials: [{
       folderName: "Calculus",
       fileName: "Lecture 1.pdf",
-      text: "Derivative measures instantaneous rate of change.",
+      text: "This note only says the course has weekly quizzes.",
       citation: "Calculus / Lecture 1.pdf / \u7b2c3\u9875",
       pageNumber: 3,
+      score: 0.2,
     }],
   });
   const results = await background.send({
@@ -239,6 +376,37 @@ async function testConflictWarning() {
     questions: [{ id: "q1", type: "choice", questionText: "Pick one", options: ["A. One", "B. Two", "C. Three"] }],
   });
   assert.match(results[0].warning, /冲突/);
+}
+
+async function testDebugLogExportLifecycle() {
+  const secret = "A".repeat(48);
+  const background = createBackground({
+    aiEnabled: true,
+    aiResult: { success: false, error: "Authorization: Bearer " + secret },
+  });
+  await background.send({
+    type: "DETECT_QUESTIONS",
+    questions: [{ id: "q1", type: "fill", questionText: "What is Alice's locker code?" }],
+  });
+
+  const firstExport = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.equal(firstExport.ok, true);
+  assert.equal(firstExport.fromPrevious, false);
+  assert.ok(firstExport.count > 0);
+  assert.ok(firstExport.entries.some((entry) => entry.event === "question_start"));
+  assert.ok(firstExport.entries.some((entry) => entry.event === "ai_api"));
+  assert.ok(firstExport.entries.some((entry) => entry.event === "final_failed"));
+  assert.doesNotMatch(JSON.stringify(firstExport.entries), new RegExp(secret));
+  assert.match(JSON.stringify(firstExport.entries), /redacted/);
+
+  const secondExport = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.equal(secondExport.ok, true);
+  assert.equal(secondExport.fromPrevious, true);
+  assert.equal(secondExport.count, firstExport.count);
+
+  const thirdExport = await background.send({ type: "EXPORT_DEBUG_LOGS" });
+  assert.equal(thirdExport.ok, true);
+  assert.equal(thirdExport.count, 0);
 }
 
 async function testQuestionConcurrencyLimit() {
@@ -337,6 +505,21 @@ function testMultipleChoiceAnnotationAndEscaping() {
   });
   assert.equal(inserted.includes("<img"), false);
   assert.equal(inserted.includes("&lt;img"), true);
+
+  const materialRows = [makeChoiceRow("A", "One"), makeChoiceRow("B", "Two")];
+  const materialContainer = {
+    querySelectorAll: () => materialRows,
+    insertAdjacentHTML() {},
+    appendChild() {},
+  };
+  context.self.AutoAnswer.Annotator.annotateChoice(materialContainer, {
+    answer: "B. Two",
+    optionLetters: ["B"],
+    source: "material",
+    confidence: 0.7,
+  });
+  assert.equal(materialRows[1].badge.includes("✅"), false);
+  assert.equal(materialRows[1].badge.includes("参考"), true);
 
   const longAnswer = "Long answer " + "content ".repeat(30) + "VISIBLE_END";
   let longInserted = "";
@@ -485,9 +668,15 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testExactMatchSkipsFuzzySearch();
   await testConsensusAndMetrics();
   testMaterialCitationFormatting();
+  await testMaterialRetrieverUsesQuestionAliases();
   await testMaterialParserHelpers();
-  await testReferenceOnlyFromServiceWorker();
+  await testMaterialChoiceAnswerFromServiceWorker();
+  await testMaterialFillAnswerFromServiceWorker();
+  await testMaterialAliceMixedLanguageQuestions();
+  await testMaterialAliceSamplePageMojibakeQuestions();
+  await testWeakMaterialEvidenceStaysReferenceOnly();
   await testConflictWarning();
+  await testDebugLogExportLifecycle();
   await testQuestionConcurrencyLimit();
   testMultipleChoiceAnnotationAndEscaping();
   testReferenceOnlyAnnotationEscapesHtml();
