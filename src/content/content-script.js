@@ -421,7 +421,7 @@
   }
 
   function clearAnnotations() {
-    document.querySelectorAll(".aa-badge, .aa-answer-toggle, .aa-answer-body, .aa-ghost-hint, .aa-reference-note")
+    document.querySelectorAll(".aa-badge, .aa-answer-toggle, .aa-answer-body, .aa-ghost-hint, .aa-reference-note, .aa-status-bar")
       .forEach((el) => el.remove());
     document.querySelectorAll(".aa-highlight-option")
       .forEach((el) => el.classList.remove("aa-highlight-option"));

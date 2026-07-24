@@ -2,7 +2,7 @@
   const hasChromeApi = typeof chrome !== "undefined" && chrome.runtime && chrome.storage;
   const manifest = hasChromeApi && chrome.runtime.getManifest
     ? chrome.runtime.getManifest()
-    : { version: "1.4.5" };
+    : { version: "1.4.6" };
   const versionEl = document.getElementById("version");
   if (versionEl) versionEl.textContent = "v" + manifest.version;
 
@@ -75,6 +75,7 @@ const CONTENT_SCRIPT_FILES = [
   "src/lib/matcher.js",
   "src/lib/answer-normalizer.js",
   "src/lib/db.js",
+  "src/lib/semantic-vector.js",
   "src/lib/material-db.js",
   "src/lib/material-retriever.js",
   "src/content/annotator.js",

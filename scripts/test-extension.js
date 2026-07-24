@@ -186,6 +186,7 @@ async function testConsensusAndMetrics() {
 
 function testMaterialCitationFormatting() {
   const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => [] } } } };
+  vm.runInNewContext(read("src/lib/semantic-vector.js"), context);
   vm.runInNewContext(read("src/lib/material-retriever.js"), context);
   const citation = context.self.AutoAnswer.MaterialRetriever.formatCitation({
     folderName: "Calculus",
@@ -211,6 +212,7 @@ async function testMaterialRetrieverUsesQuestionAliases() {
     },
   ];
   const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/semantic-vector.js"), context);
   vm.runInNewContext(read("src/lib/local-ranker.js"), context);
   vm.runInNewContext(read("src/lib/material-retriever.js"), context);
   const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
@@ -218,6 +220,51 @@ async function testMaterialRetrieverUsesQuestionAliases() {
     ["A. banana", "B. apple", "C. peach", "D. pear"]
   );
   assert.equal(refs[0].text, chunks[1].text);
+}
+
+async function testMaterialRetrieverDoesNotInjectSpecificFruit() {
+  const chunks = [{
+    folderName: "Archive",
+    fileName: "inventory.txt",
+    text: "apple crates apple storage apple vendor notes",
+    paragraphStart: 1,
+  }];
+  const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/semantic-vector.js"), context);
+  vm.runInNewContext(read("src/lib/local-ranker.js"), context);
+  vm.runInNewContext(read("src/lib/material-retriever.js"), context);
+  const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
+    "\u0041\u006c\u0069\u0063\u0065 \u559c\u6b22\u5403\u4ec0\u4e48\u6c34\u679c\uff1f",
+    ["A. banana", "B. pear", "C. peach", "D. grape"]
+  );
+  assert.equal(refs.length, 0);
+}
+
+async function testMaterialRetrieverUsesSemanticVectorRecall() {
+  const chunks = [
+    {
+      folderName: "Archive",
+      fileName: "unrelated.txt",
+      text: "The museum schedule lists Friday tickets and quiet reading hours.",
+      paragraphStart: 1,
+    },
+    {
+      folderName: "Archive",
+      fileName: "greenhouse-log.txt",
+      text: "Mina borrowed the greenhouse glass key before dusk and signed the loan card.",
+      paragraphStart: 2,
+    },
+  ];
+  const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/semantic-vector.js"), context);
+  vm.runInNewContext(read("src/lib/local-ranker.js"), context);
+  vm.runInNewContext(read("src/lib/material-retriever.js"), context);
+  const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
+    "\u8c01\u501f\u8d70\u4e86\u6e29\u5ba4\u73bb\u7483\u94a5\u5319\uff1f",
+    []
+  );
+  assert.equal(refs[0].fileName, "greenhouse-log.txt");
+  assert.ok(refs[0].semanticScore > 0);
 }
 
 async function testLocalRankerReranksMaterialEvidence() {
@@ -236,6 +283,7 @@ async function testLocalRankerReranksMaterialEvidence() {
     },
   ];
   const context = { self: { AutoAnswer: { MaterialDB: { getEnabledChunks: async () => chunks } } } };
+  vm.runInNewContext(read("src/lib/semantic-vector.js"), context);
   vm.runInNewContext(read("src/lib/local-ranker.js"), context);
   vm.runInNewContext(read("src/lib/material-retriever.js"), context);
   const refs = await context.self.AutoAnswer.MaterialRetriever.retrieve(
@@ -1175,6 +1223,8 @@ function testMutationDuringCooldownSchedulesDeferredScan() {
   await testConsensusAndMetrics();
   testMaterialCitationFormatting();
   await testMaterialRetrieverUsesQuestionAliases();
+  await testMaterialRetrieverDoesNotInjectSpecificFruit();
+  await testMaterialRetrieverUsesSemanticVectorRecall();
   await testLocalRankerReranksMaterialEvidence();
   await testMaterialParserHelpers();
   await testMaterialChoiceAnswerFromServiceWorker();

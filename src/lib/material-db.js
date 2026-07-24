@@ -287,6 +287,8 @@
           fileName: file.name,
           text: part.text,
           markdown: part.markdown,
+          semanticVector: Array.isArray(part.semanticVector) ? part.semanticVector : [],
+          semanticVectorVersion: Number(part.semanticVectorVersion || 0),
           locatorType: block.locatorType,
           pageNumber: block.pageNumber,
           headingPath: block.headingPath.slice(),
@@ -331,7 +333,18 @@
       }
       const markdown = source.slice(start, end).trim();
       const text = markdownToPlainText(markdown);
-      if (text) parts.push({ text, markdown });
+      if (text) {
+        const semantic = root.AutoAnswer.SemanticVector;
+        const semanticVector = semantic && typeof semantic.embed === "function"
+          ? semantic.embed(text)
+          : [];
+        parts.push({
+          text,
+          markdown,
+          semanticVector,
+          semanticVectorVersion: semantic?.VERSION || 0,
+        });
+      }
       if (end >= source.length) break;
       start = Math.max(start + 1, end - DEFAULT_OVERLAP);
     }
@@ -379,6 +392,8 @@
     return {
       ...chunk,
       markdown: chunk.markdown || chunk.text || "",
+      semanticVector: Array.isArray(chunk.semanticVector) ? chunk.semanticVector : [],
+      semanticVectorVersion: Number(chunk.semanticVectorVersion || 0),
       locatorType: chunk.locatorType || "paragraph",
       pageNumber: Number.isFinite(chunk.pageNumber) ? chunk.pageNumber : null,
       headingPath: Array.isArray(chunk.headingPath) ? chunk.headingPath : [],

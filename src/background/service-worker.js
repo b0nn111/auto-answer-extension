@@ -3,6 +3,7 @@
   "../lib/matcher.js",
   "../lib/answer-normalizer.js",
   "../lib/db.js",
+  "../lib/semantic-vector.js",
   "../lib/material-db.js",
   "../lib/local-ranker.js",
   "../lib/material-retriever.js",
@@ -601,6 +602,8 @@
     return (materials || []).slice(0, 5).map((item) => ({
       citation: sanitizeText(item.citation || [item.folderName, item.fileName].filter(Boolean).join(" / "), 120),
       score: Number(item.score || 0),
+      lexicalScore: Number(item.lexicalScore || 0),
+      semanticScore: Number(item.semanticScore || 0),
       rankerScore: Number(item.rankerScore || 0),
       rankerEvidence: Array.isArray(item.rankerEvidence) ? item.rankerEvidence.slice(0, 4) : [],
       pageNumber: item.pageNumber || null,

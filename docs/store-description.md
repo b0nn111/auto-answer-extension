@@ -35,8 +35,8 @@
 ### 技术支持
 
 - 支持 Chrome 和 Edge 浏览器。
-- 当前版本：1.4.5
-- 1.4.5 adds a fully local lightweight retrieval/ranking layer for uploaded materials. It improves no-API reference answers and keeps uploaded materials local as extracted text/Markdown chunks and citations.
+- 当前版本：1.4.6
+- 1.4.6 adds a fully local lightweight semantic-vector retrieval layer for uploaded materials. It improves mixed-language and synonym-based material recall without adding remote services or bundled large AI models.
 - 测试环境：XJTLU Moodle Quiz 页面。
 - 如有问题或改进建议，请加 QQ：3923636786。
 
